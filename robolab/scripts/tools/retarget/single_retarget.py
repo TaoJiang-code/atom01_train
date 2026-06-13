@@ -108,7 +108,7 @@ parser.add_argument(
     "--robot", 
     type=str,
     default="rpo",
-    choices=["rpo"],
+    choices=["rpo", "qingyun_z1_A_rev_3_0"],
     help="The robot name to be used.",
 )
 parser.add_argument(
@@ -126,7 +126,7 @@ parser.add_argument(
 parser.add_argument(
     "--config_file",
     type=str,
-    default="scripts/tools/config/rpo.yaml",
+    default=None,
     help="Path to YAML config containing gmr_dof_names, lab_dof_names",
 )
 parser.add_argument(
@@ -171,14 +171,6 @@ from pathlib import Path
 import isaaclab.sim as sim_utils
 from isaaclab.scene import InteractiveScene
 
-##
-# Pre-defined configs
-##
-if args_cli.robot == "rpo":
-    from robolab.assets.robots.roboparty import RPO_CFG as ROBOT_CFG
-else:
-    raise ValueError(f"Robot {args_cli.robot} not supported.")
-
 # Import functions and classes from gmr_to_lab.py
 # Add the script directory to path to allow imports
 script_dir = Path(__file__).parent
@@ -188,6 +180,7 @@ try:
     from gmr_to_lab import (
         LoopMode,
         extract_gmr_data,
+        get_robot_cfg,
         run_simulator,
         ReplayMotionsSceneCfg,
     )
@@ -196,10 +189,19 @@ except ImportError as e:
     print("Make sure gmr_to_lab.py is in the same directory as this script.")
     raise
 
+ROBOT_CFG = get_robot_cfg(args_cli.robot)
+
+DEFAULT_CONFIG_FILES = {
+    "rpo": "robolab/scripts/tools/retarget/config/rpo.yaml",
+    "qingyun_z1_A_rev_3_0": "robolab/scripts/tools/retarget/config/qingyun_z1_A_rev_3_0.yaml",
+}
+
 
 
 if __name__ == "__main__":
-    with open(args_cli.config_file, 'r') as f:
+    config_file = args_cli.config_file or DEFAULT_CONFIG_FILES[args_cli.robot]
+
+    with open(config_file, 'r') as f:
         config = yaml.safe_load(f)
     
     gmr_dof_names = config['gmr_dof_names']
@@ -243,6 +245,8 @@ if __name__ == "__main__":
     print("💾 SAVING CONVERTED DATA")
     print("="*60)
     print(f"📁 Output File: {args_cli.output_file}")
+    print(f"🤖 Robot:       {args_cli.robot}")
+    print(f"🧭 Config File: {config_file}")
     print(f"🧮 Number of Frames: {args_cli.frame_range[1] - args_cli.frame_range[0] if args_cli.frame_range else 'All'}")
     print(f"🔁 Loop Mode: {loop_mode.name}")
     print("="*60 + "\n")

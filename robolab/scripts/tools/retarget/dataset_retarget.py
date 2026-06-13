@@ -63,24 +63,25 @@ parser.add_argument(
     "--robot",
     type=str,
     default="rpo", 
+    choices=["rpo", "qingyun_z1_A_rev_3_0"],
     help="Robot name to use (default: rpo)",
 )
 parser.add_argument(
     "--input_dir",
     type=str,
-    default="robolab/data/motions/rpo_gmr",
+    default=None,
     help="Directory containing input GMR .pkl files",
 )
 parser.add_argument(
     "--output_dir",
     type=str,
-    default="robolab/data/motions/rpo_lab",
+    default=None,
     help="Directory to write converted .pkl files",
 )
 parser.add_argument(
     "--config_file",
     type=str,
-    default="robolab/scripts/tools/retarget/config/rpo.yaml",
+    default=None,
     help="Path to YAML config containing gmr_dof_names, lab_dof_names, lab_key_body_names",
 )
 parser.add_argument(
@@ -99,27 +100,28 @@ app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 
-import sys
 import numpy as np
 import torch
 import warnings
 import isaaclab.sim as sim_utils
 from isaaclab.scene import InteractiveScene
 
-# load robot cfg as single_retarget does
-if args_cli.robot == "rpo":
-    from robolab.assets.robots.roboparty import RPO_CFG as ROBOT_CFG
-else:
-    raise ValueError(f"Robot {args_cli.robot} not supported.")
-
-# import functions from gmr_to_lab (must be in same directory)
-script_dir = Path(__file__).parent
-sys.path.insert(0, str(script_dir))
 try:
-    from gmr_to_lab import LoopMode, extract_gmr_data, run_simulator, ReplayMotionsSceneCfg
+    from gmr_to_lab import (
+        DEFAULT_CONFIG_FILES,
+        DEFAULT_INPUT_DIRS,
+        DEFAULT_OUTPUT_DIRS,
+        LoopMode,
+        ReplayMotionsSceneCfg,
+        extract_gmr_data,
+        get_robot_cfg,
+        run_simulator,
+    )
 except ImportError as e:
     print(f"Error importing from gmr_to_lab.py: {e}")
     raise
+
+ROBOT_CFG = get_robot_cfg(args_cli.robot)
 
 
 def list_input_files(input_dir: str):
@@ -131,8 +133,12 @@ def list_input_files(input_dir: str):
 
 
 def main():
+    config_file = args_cli.config_file or DEFAULT_CONFIG_FILES[args_cli.robot]
+    input_dir = args_cli.input_dir or DEFAULT_INPUT_DIRS[args_cli.robot]
+    output_dir = args_cli.output_dir or DEFAULT_OUTPUT_DIRS[args_cli.robot]
+
     # read config
-    with open(args_cli.config_file, 'r') as f:
+    with open(config_file, 'r') as f:
         config = yaml.safe_load(f)
 
     gmr_dof_names = config['gmr_dof_names']
@@ -141,12 +147,12 @@ def main():
 
     loop_mode = LoopMode.CLAMP if args_cli.loop == "clamp" else LoopMode.WRAP
 
-    input_files = list_input_files(args_cli.input_dir)
+    input_files = list_input_files(input_dir)
     if len(input_files) == 0:
-        print(f"No .pkl files found in input directory: {args_cli.input_dir}")
+        print(f"No .pkl files found in input directory: {input_dir}")
         return
 
-    Path(args_cli.output_dir).mkdir(parents=True, exist_ok=True)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # load and convert all gmr files (entire motion)
     motion_data_dicts = []
@@ -154,6 +160,10 @@ def main():
     fps_values = []
 
     print(f"Found {len(input_files)} files to convert.")
+    print(f"Robot: {args_cli.robot}")
+    print(f"Config: {config_file}")
+    print(f"Input Dir: {input_dir}")
+    print(f"Output Dir: {output_dir}")
     for p in input_files:
         print(f"Loading and converting: {p.name}")
         motion = extract_gmr_data(
@@ -196,7 +206,7 @@ def main():
     # save outputs
     print("Saving converted motions to output directory...")
     for name, motion in zip(input_names, motion_data_dicts):
-        out_path = Path(args_cli.output_dir) / name
+        out_path = Path(output_dir) / name
         with open(out_path, 'wb') as f:
             pickle.dump(motion, f)
         print(f"Saved: {out_path}")
@@ -208,3 +218,11 @@ def main():
 
 if __name__ == '__main__':
     main()
+'''
+
+python robolab/scripts/tools/retarget/dataset_retarget.py \
+  --robot qingyun_z1_A_rev_3_0 \
+  --input_dir robolab/data/motions/qingyun_gmr \
+  --output_dir robolab/data/motions/qingyun_lab \
+  --config_file robolab/scripts/tools/retarget/config/qingyun_z1_A_rev_3_0.yaml
+'''

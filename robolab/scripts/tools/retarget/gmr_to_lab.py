@@ -72,10 +72,40 @@ from isaaclab.assets import Articulation, ArticulationCfg, AssetBaseCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 
+from robolab.assets.robots.qingyun_z1_A_rev_3_0 import QINGYUN_Z1_A_REV_3_0_19_DOF_CFG
+from robolab.assets.robots.roboparty import RPO_CFG
+
 
 class LoopMode(enum.Enum):
     CLAMP = 0
     WRAP = 1
+
+
+SUPPORTED_ROBOT_CFGS: dict[str, ArticulationCfg] = {
+    "rpo": RPO_CFG,
+    "qingyun_z1_A_rev_3_0": QINGYUN_Z1_A_REV_3_0_19_DOF_CFG,
+}
+SUPPORTED_ROBOTS: tuple[str, ...] = tuple(SUPPORTED_ROBOT_CFGS.keys())
+DEFAULT_CONFIG_FILES: dict[str, str] = {
+    "rpo": "robolab/scripts/tools/retarget/config/rpo.yaml",
+    "qingyun_z1_A_rev_3_0": "robolab/scripts/tools/retarget/config/qingyun_z1_A_rev_3_0.yaml",
+}
+DEFAULT_INPUT_DIRS: dict[str, str] = {
+    "rpo": "robolab/data/motions/rpo_gmr",
+    "qingyun_z1_A_rev_3_0": "robolab/data/motions/qingyun_gmr",
+}
+DEFAULT_OUTPUT_DIRS: dict[str, str] = {
+    "rpo": "robolab/data/motions/rpo_lab",
+    "qingyun_z1_A_rev_3_0": "robolab/data/motions/qingyun_lab",
+}
+
+
+def get_robot_cfg(robot_name: str) -> ArticulationCfg:
+    try:
+        return SUPPORTED_ROBOT_CFGS[robot_name]
+    except KeyError as exc:
+        supported = ", ".join(SUPPORTED_ROBOTS)
+        raise ValueError(f"Robot {robot_name!r} not supported. Supported robots: {supported}") from exc
 
 
 def extract_gmr_data(
@@ -114,6 +144,12 @@ def extract_gmr_data(
         
     if dof_pos.ndim != 2:
         raise ValueError(f"Expected dof_pos to be 2D array, got {dof_pos.ndim}D")
+
+    if dof_pos.shape[1] != len(gmr_dof_names):
+        raise ValueError(
+            f"GMR DOF count mismatch: motion file has {dof_pos.shape[1]} DOFs, "
+            f"but config declares {len(gmr_dof_names)} names."
+        )
     
     num_frames = dof_pos.shape[0]
     if end_frame == -1 or end_frame > num_frames:
