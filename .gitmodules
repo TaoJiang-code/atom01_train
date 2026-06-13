@@ -1,6 +1,3 @@
-[submodule "robolab"]
-	path = robolab
-	url = https://github.com/Luo1imasi/robolab.git
-[submodule "rsl_rl"]
-	path = rsl_rl
-	url = https://github.com/Luo1imasi/rsl_rl.git
+[submodule "robolab/robolab/assets/QingYun_Robot_Description"]
+	path = robolab/robolab/assets/QingYun_Robot_Description
+	url = https://github.com/TaoJiang-code/QingYun_Robot_Description.git
