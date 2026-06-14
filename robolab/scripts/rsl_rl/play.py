@@ -35,7 +35,12 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import argparse
+from pathlib import Path
 import sys
+
+ROBOLAB_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+if str(ROBOLAB_PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(ROBOLAB_PACKAGE_ROOT))
 
 from isaaclab.app import AppLauncher
 
@@ -91,7 +96,7 @@ import time
 import torch
 import copy
 
-from rsl_rl.runners import DistillationRunner, OnPolicyRunner
+from rsl_rl.runners import AMPRunner, DistillationRunner, OnPolicyRunner
 
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -103,7 +108,12 @@ from isaaclab.envs import (
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
 
-from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper, export_policy_as_jit, export_policy_as_onnx, handle_deprecated_rsl_rl_cfg
+from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper, export_policy_as_jit, export_policy_as_onnx
+try:
+    from isaaclab_rl.rsl_rl import handle_deprecated_rsl_rl_cfg
+except ImportError:
+    def handle_deprecated_rsl_rl_cfg(agent_cfg: RslRlBaseRunnerCfg, _installed_version: str) -> RslRlBaseRunnerCfg:
+        return agent_cfg
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab.markers import VisualizationMarkers
 
@@ -343,6 +353,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # load previously trained model
     if agent_cfg.class_name == "OnPolicyRunner":
         runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
+    elif agent_cfg.class_name == "AMPRunner":
+        runner = AMPRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     elif agent_cfg.class_name == "DistillationRunner":
         runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     else:
@@ -436,3 +448,13 @@ if __name__ == "__main__":
     main()
     # close sim app
     simulation_app.close()
+
+'''
+conda activate atom01_train
+
+python robolab/scripts/rsl_rl/play.py \
+  --task QingYun-Rev3-Parkour-Play \
+  --num_envs 10 \
+  --checkpoint logs/rsl_rl/qingyun_rev3_parkour/YOUR_RUN/model_XXXX.pt
+
+'''
