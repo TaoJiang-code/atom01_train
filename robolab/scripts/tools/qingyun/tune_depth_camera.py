@@ -51,6 +51,7 @@ simulation_app = app_launcher.app
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation, AssetBaseCfg
+from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.scene import InteractiveScene
 from isaaclab.sensors.ray_caster.ray_cast_utils import obtain_world_pose_from_view
 from isaaclab.sim import SimulationContext
@@ -66,6 +67,7 @@ BUTTON_WINDOW = "Depth Camera Actions"
 STAIR_PRIM_PATH = "/World/preview_stair"
 STAIR_POS = (1.0, 0.0, 0.075)
 STAIR_SIZE = (0.45, 1.20, 0.15)
+CAMERA_MARKER_PRIM_PATH = "/Visuals/DepthCameraPosition"
 QINGYUN_CFG_PATH = (
     Path(__file__).resolve().parents[4]
     / "robolab"
@@ -250,7 +252,7 @@ def pose_to_quat_wxyz(pose: dict[str, float], device: str) -> torch.Tensor:
     return math_utils.quat_unique(math_utils.normalize(quat))
 
 
-def apply_camera_offset(scene: InteractiveScene, pose: dict[str, float]) -> torch.Tensor:
+def compute_camera_world_pose(scene: InteractiveScene, pose: dict[str, float]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     camera = scene.sensors["camera"]
     env_ids = torch.tensor([0], device=camera.device, dtype=torch.long)
 
@@ -267,13 +269,37 @@ def apply_camera_offset(scene: InteractiveScene, pose: dict[str, float]) -> torc
         offset_pos,
         offset_quat,
     )
+    return offset_quat[0], camera_pos_w, camera_quat_w
+
+
+def apply_camera_offset(scene: InteractiveScene, pose: dict[str, float]) -> tuple[torch.Tensor, torch.Tensor]:
+    camera = scene.sensors["camera"]
+    env_ids = torch.tensor([0], device=camera.device, dtype=torch.long)
+    offset_quat, camera_pos_w, camera_quat_w = compute_camera_world_pose(scene, pose)
     camera.set_world_poses(
         camera_pos_w,
         camera_quat_w,
         env_ids=env_ids,
         convention=camera.cfg.offset.convention,
     )
-    return offset_quat[0]
+    return offset_quat, camera_pos_w[0]
+
+
+def make_camera_position_marker() -> VisualizationMarkers:
+    marker_cfg = VisualizationMarkersCfg(
+        prim_path=CAMERA_MARKER_PRIM_PATH,
+        markers={
+            "camera_pos": sim_utils.SphereCfg(
+                radius=0.035,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.9, 0.0)),
+            )
+        },
+    )
+    return VisualizationMarkers(marker_cfg)
+
+
+def update_camera_position_marker(marker: VisualizationMarkers, camera_pos_w: torch.Tensor) -> None:
+    marker.visualize(translations=camera_pos_w.unsqueeze(0))
 
 
 def colorize_depth(depth: np.ndarray, clip_max: float) -> np.ndarray:
@@ -386,7 +412,9 @@ def main() -> None:
         create_trackbars(default_pose)
 
     current_pose = dict(default_pose)
-    current_quat = apply_camera_offset(scene, current_pose)
+    current_quat, current_camera_pos_w = apply_camera_offset(scene, current_pose)
+    camera_marker = make_camera_position_marker()
+    update_camera_position_marker(camera_marker, current_camera_pos_w)
 
     if tuning_enabled:
         print("[INFO] QingYun depth camera tuner started.")
@@ -404,10 +432,12 @@ def main() -> None:
                 new_pose = read_trackbar_pose()
                 if any(abs(new_pose[key] - current_pose[key]) > 1.0e-6 for key in current_pose):
                     current_pose = new_pose
-                    current_quat = apply_camera_offset(scene, current_pose)
+                    current_quat, current_camera_pos_w = apply_camera_offset(scene, current_pose)
+                    update_camera_position_marker(camera_marker, current_camera_pos_w)
 
             sim.render()
             scene.update(sim.get_physics_dt())
+            update_camera_position_marker(camera_marker, current_camera_pos_w)
             render_depth_preview(scene, current_pose, current_quat)
             draw_action_window(enable_save=tuning_enabled)
 
@@ -418,7 +448,8 @@ def main() -> None:
                 current_pose = dict(default_pose)
                 if tuning_enabled:
                     set_trackbar_pose(current_pose)
-                current_quat = apply_camera_offset(scene, current_pose)
+                current_quat, current_camera_pos_w = apply_camera_offset(scene, current_pose)
+                update_camera_position_marker(camera_marker, current_camera_pos_w)
                 STATUS_TEXT["value"] = "Reset to default pose."
                 print("[INFO] Camera pose reset to the current QingYun default.")
                 print(format_config_snippet(current_pose, current_quat))
@@ -436,7 +467,8 @@ def main() -> None:
                     current_pose = dict(default_pose)
                     if tuning_enabled:
                         set_trackbar_pose(current_pose)
-                    current_quat = apply_camera_offset(scene, current_pose)
+                    current_quat, current_camera_pos_w = apply_camera_offset(scene, current_pose)
+                    update_camera_position_marker(camera_marker, current_camera_pos_w)
                     STATUS_TEXT["value"] = "Reset to default pose."
                     print("[INFO] Camera pose reset to the current default.")
                     print(format_config_snippet(current_pose, current_quat))
