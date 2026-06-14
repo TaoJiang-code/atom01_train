@@ -3,12 +3,17 @@ from __future__ import annotations
 import argparse
 import math
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy as np
 import torch
+
+ROBOLAB_PACKAGE_ROOT = Path(__file__).resolve().parents[3]
+if str(ROBOLAB_PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(ROBOLAB_PACKAGE_ROOT))
 
 from isaaclab.app import AppLauncher
 

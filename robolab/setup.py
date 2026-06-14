@@ -43,7 +43,7 @@ setup(
         "psutil",
         "joblib>=1.2.0",
         "pynput",
-        "opencv-python",
+        "opencv-python<4.12",
         "onnxruntime-gpu",
         "pyvista",
         "scikit-learn",
