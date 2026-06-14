@@ -288,8 +288,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if not args_cli.push_robot:
         env_cfg.events.push_robot = None
     env_cfg.episode_length_s = 40.0
-    env_cfg.commands.heading_command=False
-    env_cfg.commands.rel_standing_envs = 0.0
+    if hasattr(env_cfg.commands, "base_velocity"):
+        env_cfg.commands.base_velocity.rel_standing_envs = 0.0
 
     if args_cli.plane:
         env_cfg.scene.terrain.terrain_generator = None
