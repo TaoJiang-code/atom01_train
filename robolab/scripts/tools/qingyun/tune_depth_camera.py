@@ -50,7 +50,7 @@ simulation_app = app_launcher.app
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
-from isaaclab.assets import Articulation
+from isaaclab.assets import Articulation, AssetBaseCfg
 from isaaclab.scene import InteractiveScene
 from isaaclab.sensors.ray_caster.ray_cast_utils import obtain_world_pose_from_view
 from isaaclab.sim import SimulationContext
@@ -63,6 +63,9 @@ CONTROL_WINDOW = "QingYun Depth Camera Controls"
 RAW_DEPTH_WINDOW = "QingYun Raw Metric Depth"
 NETWORK_DEPTH_WINDOW = "QingYun Network Input Depth"
 BUTTON_WINDOW = "Depth Camera Actions"
+STAIR_PRIM_PATH = "/World/preview_stair"
+STAIR_POS = (1.0, 0.0, 0.075)
+STAIR_SIZE = (0.45, 1.20, 0.15)
 QINGYUN_CFG_PATH = (
     Path(__file__).resolve().parents[4]
     / "robolab"
@@ -124,11 +127,36 @@ def _button_mouse_callback(event: int, x: int, y: int, _flags: int, _userdata) -
             return
 
 
+def configure_stair_preview_scene(scene_cfg) -> None:
+    """Replace the heavy parkour terrain with a flat plane and one stair in front of the robot."""
+    scene_cfg.terrain.terrain_type = "plane"
+    scene_cfg.terrain.terrain_generator = None
+    scene_cfg.terrain.max_init_terrain_level = 0
+    scene_cfg.terrain.virtual_obstacles = {}
+
+    scene_cfg.stair = AssetBaseCfg(
+        prim_path=STAIR_PRIM_PATH,
+        init_state=AssetBaseCfg.InitialStateCfg(pos=STAIR_POS),
+        spawn=sim_utils.CuboidCfg(
+            size=STAIR_SIZE,
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.55, 0.55)),
+        ),
+    )
+
+    raycast_mesh_paths = ["/World/ground", STAIR_PRIM_PATH]
+    scene_cfg.camera.mesh_prim_paths = list(dict.fromkeys(scene_cfg.camera.mesh_prim_paths + raycast_mesh_paths))
+    scene_cfg.left_height_scanner.mesh_prim_paths = raycast_mesh_paths
+    scene_cfg.right_height_scanner.mesh_prim_paths = raycast_mesh_paths
+    scene_cfg.height_scanner.mesh_prim_paths = raycast_mesh_paths
+
+
 def build_scene() -> tuple[SimulationContext, InteractiveScene, Articulation]:
     env_cfg = QingYunRev30ParkourRoughEnvCfg() if args_cli.robot == "qingyun" else RPOParkourRoughEnvCfg()
     scene_cfg = env_cfg.scene
     scene_cfg.num_envs = 1
     scene_cfg.env_spacing = 2.5
+    configure_stair_preview_scene(scene_cfg)
 
     sim_cfg = sim_utils.SimulationCfg(device=args_cli.device)
     sim_cfg.dt = 0.02
