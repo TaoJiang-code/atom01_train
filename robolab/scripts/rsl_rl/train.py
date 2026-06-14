@@ -40,7 +40,12 @@
 
 import argparse
 import os
+from pathlib import Path
 import sys
+
+ROBOLAB_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+if str(ROBOLAB_PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(ROBOLAB_PACKAGE_ROOT))
 
 from isaaclab.app import AppLauncher
 
