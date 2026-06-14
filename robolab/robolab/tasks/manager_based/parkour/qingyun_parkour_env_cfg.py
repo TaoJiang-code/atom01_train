@@ -12,6 +12,7 @@ import robolab.tasks.manager_based.parkour.mdp as mdp
 from robolab.tasks.manager_based.parkour.parkour_env_cfg import ROUGH_TERRAINS_CFG, ParkourEnvCfg
 
 AMP_NUM_STEPS = 3
+QINGYUN_ROOT_HEIGHT_MIN = 0.35
 
 QINGYUN_KEY_BODY_NAMES = [
     "lp_foot_pitch_link",
@@ -154,6 +155,7 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
         self.terminations.base_contact.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces", body_names=torso_body_name
         )
+        self.terminations.root_height.params["minimum_height"] = QINGYUN_ROOT_HEIGHT_MIN
 
         self.events.randomize_rigid_body_com.params["asset_cfg"] = SceneEntityCfg(
             "robot", body_names=[torso_body_name, "base_link"]
