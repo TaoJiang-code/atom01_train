@@ -145,7 +145,8 @@ def configure_stair_preview_scene(scene_cfg) -> None:
     )
 
     raycast_mesh_paths = ["/World/ground", STAIR_PRIM_PATH]
-    scene_cfg.camera.mesh_prim_paths = list(dict.fromkeys(scene_cfg.camera.mesh_prim_paths + raycast_mesh_paths))
+    if STAIR_PRIM_PATH not in scene_cfg.camera.mesh_prim_paths:
+        scene_cfg.camera.mesh_prim_paths.append(STAIR_PRIM_PATH)
     scene_cfg.left_height_scanner.mesh_prim_paths = raycast_mesh_paths
     scene_cfg.right_height_scanner.mesh_prim_paths = raycast_mesh_paths
     scene_cfg.height_scanner.mesh_prim_paths = raycast_mesh_paths
