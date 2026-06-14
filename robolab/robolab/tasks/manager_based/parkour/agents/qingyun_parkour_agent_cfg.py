@@ -41,7 +41,7 @@ class QingYunPpoEncoderMoEActorCriticCfg:
 class QingYunParkourAmpRunnerCfg(RslRlOnPolicyRunnerCfg):
     class_name = "AMPRunner"
     num_steps_per_env = 24
-    max_iterations = 30000
+    max_iterations = 50000
     save_interval = 500
     experiment_name = "qingyun_rev3_parkour"
     wandb_project = "qingyun_rev3_parkour"
