@@ -60,7 +60,8 @@ from robolab.tasks.manager_based.parkour.rpo_parkour_env_cfg import RPOParkourRo
 
 
 CONTROL_WINDOW = "QingYun Depth Camera Controls"
-DEPTH_WINDOW = "QingYun First-Person Depth"
+RAW_DEPTH_WINDOW = "QingYun Raw Metric Depth"
+NETWORK_DEPTH_WINDOW = "QingYun Network Input Depth"
 BUTTON_WINDOW = "Depth Camera Actions"
 QINGYUN_CFG_PATH = (
     Path(__file__).resolve().parents[4]
@@ -284,20 +285,21 @@ def render_depth_preview(scene: InteractiveScene, pose: dict[str, float], quat: 
     cv2.putText(raw_bgr, "raw metric depth", (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     cv2.putText(noised_bgr, "network input depth", (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
-    canvas = np.hstack([raw_bgr, noised_bgr])
     overlay_lines = [
         f"pos=({pose['x']:.4f}, {pose['y']:.4f}, {pose['z']:.4f}) m",
         f"rpy=({pose['roll']:.2f}, {pose['pitch']:.2f}, {pose['yaw']:.2f}) deg",
         f"quat=({quat[0]:.4f}, {quat[1]:.4f}, {quat[2]:.4f}, {quat[3]:.4f})",
         "keys: q/ESC quit | r reset | p print config",
     ]
-    y = canvas.shape[0] - 90
+    y = raw_bgr.shape[0] - 90
     for line in overlay_lines:
-        cv2.putText(canvas, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (240, 240, 240), 2)
+        cv2.putText(raw_bgr, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (240, 240, 240), 2)
         y += 24
 
-    cv2.namedWindow(DEPTH_WINDOW, cv2.WINDOW_NORMAL)
-    cv2.imshow(DEPTH_WINDOW, canvas)
+    cv2.namedWindow(RAW_DEPTH_WINDOW, cv2.WINDOW_NORMAL)
+    cv2.namedWindow(NETWORK_DEPTH_WINDOW, cv2.WINDOW_NORMAL)
+    cv2.imshow(RAW_DEPTH_WINDOW, raw_bgr)
+    cv2.imshow(NETWORK_DEPTH_WINDOW, noised_bgr)
 
 
 def format_config_snippet(pose: dict[str, float], quat: torch.Tensor) -> str:
