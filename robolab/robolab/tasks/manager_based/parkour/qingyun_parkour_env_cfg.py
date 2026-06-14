@@ -67,9 +67,9 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
         self.scene.knee_volume_points.prim_path = "{ENV_REGEX_NS}/Robot/.*_knee_pitch_link"
         self.scene.camera.prim_path = "{ENV_REGEX_NS}/Robot/p_torso_yaw_link"
         self.scene.camera.offset.pos = (
-            0.0875,
-            0.0,
-            0.20568,
+            0.078000,
+            0.000000,
+            0.206000,
         )
         self.scene.camera.offset.rot = (
             0.866,
