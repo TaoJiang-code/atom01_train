@@ -369,3 +369,11 @@ if __name__ == "__main__":
     main()
     # close sim app
     simulation_app.close()
+'''
+conda activate atom01_train
+tensorboard --logdir logs/rsl_rl/qingyun_rev3_parkour --port 6006
+
+python robolab/scripts/rsl_rl/train.py \
+  --task QingYun-Rev3-Parkour \
+  --headless
+'''
