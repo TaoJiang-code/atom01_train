@@ -283,7 +283,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env_cfg.seed = agent_cfg.seed
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
 
-    env_cfg.noise.add_noise = False
+    if hasattr(env_cfg, "noise"):
+        env_cfg.noise.add_noise = False
     if not args_cli.push_robot:
         env_cfg.events.push_robot = None
     env_cfg.episode_length_s = 40.0
@@ -454,7 +455,7 @@ conda activate atom01_train
 
 python robolab/scripts/rsl_rl/play.py \
   --task QingYun-Rev3-Parkour-Play \
-  --num_envs 10 \
-  --checkpoint logs/rsl_rl/qingyun_rev3_parkour/YOUR_RUN/model_XXXX.pt
+  --num_envs 3 \
+  --checkpoint logs/rsl_rl/qingyun_rev3_parkour/2026-06-14_14-44-54/model_1000.pt
 
 '''
