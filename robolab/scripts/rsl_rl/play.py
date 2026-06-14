@@ -385,16 +385,29 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
     if not os.path.exists(export_model_dir):
         os.makedirs(export_model_dir, exist_ok=True)
+    obs = env.get_observations()
     if hasattr(env_cfg, "attn_enc"):
-        torch_policy_exporter = TorchAttnEncPolicyExporter(policy_nn, normalizer)
-        torch_policy_exporter.export(path=export_model_dir, filename="policy.pt")
-        onnx_policy_exporter = OnnxAttnEncPolicyExporter(policy_nn, normalizer, verbose=False)
-        onnx_policy_exporter.export(path=export_model_dir, filename="policy.onnx")
+        try:
+            torch_policy_exporter = TorchAttnEncPolicyExporter(policy_nn, normalizer)
+            torch_policy_exporter.export(path=export_model_dir, filename="policy.pt")
+            onnx_policy_exporter = OnnxAttnEncPolicyExporter(policy_nn, normalizer, verbose=False)
+            onnx_policy_exporter.export(path=export_model_dir, filename="policy.onnx")
+        except Exception as exc:
+            print(f"[WARN] Skipping policy export because it failed: {exc}")
     else:
-        export_policy_as_jit(policy_nn, normalizer, path=export_model_dir, filename="policy.pt")
-        export_policy_as_onnx(
-            policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx"
-        )
+        try:
+            export_policy_as_jit(policy_nn, normalizer, path=export_model_dir, filename="policy.pt")
+        except Exception as exc:
+            print(f"[WARN] Skipping JIT export because it failed: {exc}")
+        try:
+            if hasattr(policy_nn, "export_as_onnx"):
+                policy_nn.export_as_onnx(obs, export_model_dir)
+            else:
+                export_policy_as_onnx(
+                    policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx"
+                )
+        except Exception as exc:
+            print(f"[WARN] Skipping ONNX export because it failed: {exc}")
 
     if not args_cli.headless:
         from robolab.utils.keyboard import Keyboard
@@ -402,8 +415,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     dt = env.unwrapped.step_dt
 
-    # reset environment
-    obs = env.get_observations()
+    # use the initial observations collected before optional policy export
     timestep = 0
     # simulate environment
     while simulation_app.is_running():
