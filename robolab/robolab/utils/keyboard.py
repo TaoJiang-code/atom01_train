@@ -160,7 +160,10 @@ class Keyboard(DeviceBase):
     def _update_commands(self):
         """Update the velocity commands in the environment."""
         env = self.env.unwrapped
-        commands = env.command_generator.command
+        if hasattr(env, "command_manager"):
+            commands = env.command_manager.get_term("base_velocity").command
+        else:
+            commands = env.command_generator.command
         commands[:, 0] = self.lin_vel_x  # lin_vel_x
         commands[:, 1] = self.lin_vel_y  # lin_vel_y
         commands[:, 2] = self.ang_vel    # ang_vel
