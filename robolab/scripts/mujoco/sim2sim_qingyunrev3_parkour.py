@@ -34,8 +34,25 @@ python robolab/scripts/mujoco/sim2sim_qingyunrev3_parkour.py \
   --stair_steps 8 \
   --stair_length 0.30 \
   --stair_width 1.20 \
+  --stair_platform_length 1.20 \
   --stair_height 0.1 \
-  --stair_start_x 2.0 
+  --stair_start_x 2.0
+
+python robolab/scripts/mujoco/sim2sim_qingyunrev3_parkour.py \
+  --depth_encoder logs/exported/0-depth_encoder.onnx \
+  --actor logs/exported/actor.onnx \
+  --stair_steps 6 \
+  --stair_length 0.30 \
+  --stair_width 1.20 \
+  --stair_platform_length 1.20 \
+  --stair_height 0.08 \
+  --stair_start_x 0.75 \
+  --trench_runup 0.70 \
+  --trench_width 0.10 \
+  --landing_height 0.20 \
+  --landing_length 0.90 \
+  --ramp_length 2.00 \
+  --ground_after_length 2.50
 '''
 
 from __future__ import annotations
@@ -991,6 +1008,31 @@ def run_onnx_single_batch(session: Any, input_name: str, array: np.ndarray, fixe
     return session.run(None, {input_name: array})[0]
 
 
+def _add_box_geom(
+    worldbody: ET.Element,
+    *,
+    name: str,
+    pos: tuple[float, float, float],
+    size: tuple[float, float, float],
+    rgba: str = "0.45 0.45 0.45 1",
+    friction: str = "0.8 0.01 0.001",
+    condim: str = "3",
+    euler: tuple[float, float, float] | None = None,
+) -> None:
+    attrs = {
+        "name": name,
+        "type": "box",
+        "pos": f"{pos[0]:.6f} {pos[1]:.6f} {pos[2]:.6f}",
+        "size": f"{size[0]:.6f} {size[1]:.6f} {size[2]:.6f}",
+        "rgba": rgba,
+        "friction": friction,
+        "condim": condim,
+    }
+    if euler is not None:
+        attrs["euler"] = f"{euler[0]:.6f} {euler[1]:.6f} {euler[2]:.6f}"
+    ET.SubElement(worldbody, "geom", attrs)
+
+
 def make_stair_mjcf(
     source_xml: str,
     *,
@@ -1002,13 +1044,37 @@ def make_stair_mjcf(
     start_x: float,
     center_y: float,
     floor_z: float,
-) -> str:
-    """Return an MJCF path, appending a generated staircase when enabled."""
+    platform_length: float | None = None,
+    trench_width: float = 0.9,
+    trench_runup: float = 0.7,
+    landing_height: float = 0.20,
+    landing_length: float = 0.9,
+    ramp_length: float = 2.0,
+    ground_after_length: float = 2.5,
+) -> tuple[str, np.ndarray]:
+    """Return an MJCF path and spawn pose for a descending parkour course.
+
+    The generated course is:
+    1. a raised pyramid-stair platform (robot starts on the top),
+    2. a finite run-up,
+    3. a trench / gap,
+    4. an elevated landing platform,
+    5. a descending ramp back to ground,
+    6. a flat ground run-out.
+    """
     if not enabled or steps <= 0:
-        return source_xml
+        return source_xml, np.array([0.0, 0.0, 0.0], dtype=np.float64)
 
     if step_length <= 0.0 or width <= 0.0 or step_height <= 0.0:
         raise ValueError("Stair dimensions must be positive.")
+    if trench_width <= 0.0 or trench_runup <= 0.0 or landing_height <= 0.0 or landing_length <= 0.0:
+        raise ValueError("Trench and landing dimensions must be positive.")
+    if ramp_length <= 0.0 or ground_after_length <= 0.0:
+        raise ValueError("Ramp and ground run-out dimensions must be positive.")
+
+    top_platform_length = float(platform_length) if platform_length is not None else max(float(step_length), float(width))
+    if top_platform_length <= 0.0:
+        raise ValueError("Platform length must be positive.")
 
     tree = ET.parse(source_xml)
     root = tree.getroot()
@@ -1022,23 +1088,96 @@ def make_stair_mjcf(
     if worldbody is None:
         raise ValueError(f"MJCF file has no <worldbody>: {source_xml}")
 
+    outer_length = top_platform_length + 2.0 * max(0, steps - 1) * step_length
+    center_x = start_x + 0.5 * outer_length
+    stair_base_z = floor_z + (landing_height - step_height)
+    top_height = steps * step_height
+    top_start_x = start_x + max(0, steps - 1) * step_length
+    top_end_x = top_start_x + top_platform_length
+
     for i in range(steps):
+        inset_levels = steps - i - 1
         block_height = (i + 1) * step_height
-        x = start_x + (i + 0.5) * step_length
-        z = floor_z + 0.5 * block_height
-        ET.SubElement(
+        block_length = top_platform_length + 2.0 * inset_levels * step_length
+        block_width = width + 2.0 * inset_levels * step_length
+        z = stair_base_z + 0.5 * block_height
+        _add_box_geom(
             worldbody,
-            "geom",
-            {
-                "name": f"generated_stair_{i + 1:02d}",
-                "type": "box",
-                "pos": f"{x:.6f} {center_y:.6f} {z:.6f}",
-                "size": f"{0.5 * step_length:.6f} {0.5 * width:.6f} {0.5 * block_height:.6f}",
-                "rgba": "0.45 0.45 0.45 1",
-                "friction": "0.8 0.01 0.001",
-                "condim": "3",
-            },
+            name=f"generated_pyramid_stair_{i + 1:02d}",
+            pos=(center_x, center_y, z),
+            size=(0.5 * block_length, 0.5 * block_width, 0.5 * block_height),
         )
+
+    # Keep the original MuJoCo infinite floor. The "trench" is modeled as a gap
+    # between two finite boxes with the same top-surface height.
+    support_half_height = 0.5 * landing_height
+    course_exit_x = start_x + outer_length
+    runup_start_x = course_exit_x
+    runup_end_x = runup_start_x + trench_runup
+    runup_center_x = 0.5 * (runup_start_x + runup_end_x)
+    runup_width = width + 0.6
+    _add_box_geom(
+        worldbody,
+        name="generated_runup_platform",
+        pos=(runup_center_x, center_y, floor_z + support_half_height),
+        size=(0.5 * (runup_end_x - runup_start_x), 0.5 * runup_width, support_half_height),
+        rgba="0.36 0.36 0.36 1",
+    )
+
+    trench_start_x = runup_end_x
+    trench_end_x = trench_start_x + trench_width
+
+    landing_start_x = trench_end_x
+    landing_end_x = landing_start_x + landing_length
+    landing_center_x = 0.5 * (landing_start_x + landing_end_x)
+    landing_width = width + 0.4
+    _add_box_geom(
+        worldbody,
+        name="generated_landing_platform",
+        pos=(landing_center_x, center_y, floor_z + 0.5 * landing_height),
+        size=(0.5 * landing_length, 0.5 * landing_width, support_half_height),
+        rgba="0.52 0.52 0.52 1",
+    )
+
+    ramp_start_x = landing_end_x
+    ramp_end_x = ramp_start_x + ramp_length
+    ramp_pitch = float(np.arctan2(landing_height, ramp_length))
+    ramp_thickness = 0.06
+    ramp_mid_x = 0.5 * (ramp_start_x + ramp_end_x)
+    ramp_mid_z = floor_z + 0.5 * landing_height
+    ramp_normal = np.array([np.sin(ramp_pitch), 0.0, np.cos(ramp_pitch)], dtype=np.float64)
+    ramp_center = np.array([ramp_mid_x, center_y, ramp_mid_z], dtype=np.float64) - 0.5 * ramp_thickness * ramp_normal
+    _add_box_geom(
+        worldbody,
+        name="generated_down_ramp",
+        pos=(float(ramp_center[0]), float(ramp_center[1]), float(ramp_center[2])),
+        size=(0.5 * ramp_length, 0.5 * landing_width, 0.5 * ramp_thickness),
+        rgba="0.56 0.50 0.42 1",
+        euler=(0.0, ramp_pitch, 0.0),
+    )
+
+    far_ground_start_x = ramp_end_x
+    far_ground_end_x = far_ground_start_x + ground_after_length
+    far_ground_center_x = 0.5 * (far_ground_start_x + far_ground_end_x)
+    _add_box_geom(
+        worldbody,
+        name="generated_ground_exit",
+        pos=(far_ground_center_x, center_y, floor_z - 0.20),
+        size=(0.5 * (far_ground_end_x - far_ground_start_x), 0.5 * runup_width, 0.20),
+        rgba="0.34 0.34 0.34 1",
+    )
+
+    support_top_z = stair_base_z + top_height
+    nominal_base_height_above_support = abs(float(floor_z))
+    spawn_clearance_z = max(0.02, 0.5 * step_height)
+    spawn_pos = np.array(
+        [
+            top_start_x + 0.5 * top_platform_length,
+            center_y,
+            support_top_z + nominal_base_height_above_support + spawn_clearance_z,
+        ],
+        dtype=np.float64,
+    )
 
     temp = tempfile.NamedTemporaryFile(
         mode="w",
@@ -1049,7 +1188,7 @@ def make_stair_mjcf(
     )
     with temp:
         tree.write(temp, encoding="unicode", xml_declaration=False)
-    return temp.name
+    return temp.name, spawn_pos
 
 
 def run_mujoco_onnx(
@@ -1108,6 +1247,12 @@ def run_mujoco_onnx(
             f"fovx≈{fovx_implied:.2f}°, Isaac cfg uses {_FOV_X_DEG}° — check camera FOV consistency."
         )
     data = mujoco.MjData(model)
+    initial_base_pos = getattr(cfg.sim_config, "initial_base_pos", None)
+    if initial_base_pos is not None:
+        data.qpos[:3] = np.asarray(initial_base_pos, dtype=np.double)
+    initial_base_quat = getattr(cfg.sim_config, "initial_base_quat_wxyz", None)
+    if initial_base_quat is not None:
+        data.qpos[3:7] = np.asarray(initial_base_quat, dtype=np.double)
     data.qpos[-cfg.robot_config.num_actions :] = cfg.robot_config.default_pos
     mj_macro_step(model, data, n_sub=phys_substeps)
 
@@ -1478,13 +1623,13 @@ if __name__ == "__main__":
         "--stair_length",
         type=float,
         default=0.28,
-        help="Tread length of each stair level in meters; total length is stair_steps * stair_length.",
+        help="Horizontal inset size of each pyramid-stair layer in meters.",
     )
     parser.add_argument(
         "--stair_width",
         type=float,
         default=1.2,
-        help="Side-to-side width of the generated staircase in meters.",
+        help="Top-platform width of the generated pyramid staircase in meters.",
     )
     parser.add_argument(
         "--stair_height",
@@ -1493,10 +1638,16 @@ if __name__ == "__main__":
         help="Vertical height added by each stair level in meters.",
     )
     parser.add_argument(
+        "--stair_platform_length",
+        type=float,
+        default=None,
+        help="Top-platform length in meters. Defaults to max(stair_length, stair_width).",
+    )
+    parser.add_argument(
         "--stair_start_x",
         type=float,
         default=0.75,
-        help="X position where the first generated stair begins, in meters.",
+        help="X position of the front edge of the outermost pyramid stair layer, in meters.",
     )
     parser.add_argument(
         "--stair_center_y",
@@ -1509,6 +1660,42 @@ if __name__ == "__main__":
         type=float,
         default=-0.6003,
         help="Ground height used as the base Z for generated stairs.",
+    )
+    parser.add_argument(
+        "--trench_width",
+        type=float,
+        default=0.9,
+        help="Gap length of the trench after the pyramid stairs, in meters.",
+    )
+    parser.add_argument(
+        "--trench_runup",
+        type=float,
+        default=0.7,
+        help="Flat ground run-up length between the pyramid stairs and the trench, in meters.",
+    )
+    parser.add_argument(
+        "--landing_height",
+        type=float,
+        default=0.20,
+        help="Height of the post-trench landing platform above ground, in meters.",
+    )
+    parser.add_argument(
+        "--landing_length",
+        type=float,
+        default=0.9,
+        help="Flat landing-platform length before the descending ramp, in meters.",
+    )
+    parser.add_argument(
+        "--ramp_length",
+        type=float,
+        default=2.0,
+        help="Length of the descending ramp from the landing platform back to ground, in meters.",
+    )
+    parser.add_argument(
+        "--ground_after_length",
+        type=float,
+        default=2.5,
+        help="Flat ground run-out length after the descending ramp, in meters.",
     )
     parser.add_argument(
         "--headless",
@@ -1541,7 +1728,7 @@ if __name__ == "__main__":
         xml_path = args.mujoco_xml
     else:
         xml_path = scene_xml[args.scene]
-    xml_path = make_stair_mjcf(
+    xml_path, spawn_pos = make_stair_mjcf(
         xml_path,
         enabled=not args.no_stairs and args.scene == "stairs",
         steps=args.stair_steps,
@@ -1551,6 +1738,13 @@ if __name__ == "__main__":
         start_x=args.stair_start_x,
         center_y=args.stair_center_y,
         floor_z=args.floor_z,
+        platform_length=args.stair_platform_length,
+        trench_width=args.trench_width,
+        trench_runup=args.trench_runup,
+        landing_height=args.landing_height,
+        landing_length=args.landing_length,
+        ramp_length=args.ramp_length,
+        ground_after_length=args.ground_after_length,
     )
     print(f"[INFO] Loading MuJoCo XML: {xml_path}")
 
@@ -1561,6 +1755,8 @@ if __name__ == "__main__":
             dt = 0.005
             decimation = 4
             depth_camera_body = "p_torso_yaw_link"
+            initial_base_pos = spawn_pos
+            initial_base_quat_wxyz = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.double)
 
         class robot_config:
             kps = np.array(
