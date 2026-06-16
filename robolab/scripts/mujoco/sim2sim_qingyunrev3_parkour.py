@@ -9,8 +9,8 @@
 # delayed_visualizable_image subsampling.
 
 '''
-conda create -n qingyun_mujoco python=3.11 -y
-conda activate qingyun_mujoco
+conda create -n atom01_train python=3.11 -y
+conda activate atom01_train
 
 python -m pip install --upgrade pip
 
