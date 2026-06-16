@@ -41,8 +41,6 @@ except ImportError as e:
 else:
     _ORT_IMPORT_ERROR = None
 
-from robolab.assets import ISAAC_ASSET_DIR
-
 # Depth pipeline (encoder input aligned with ``noise_model.crop_and_resize``):
 #   ⑴ MuJoCo offscreen depth at native **64×36** (same 16:9 as Isaac ray grid).
 #   ⑵ **Per-pixel linearize** depth buffer → metric Z.
@@ -1255,7 +1253,7 @@ if __name__ == "__main__":
         type=str,
         choices=("stairs", "terrain", "plane"),
         default="stairs",
-        help="Scene: stairs=rpo_stairs.xml (pyramids + trapezoid up/platform/down); terrain=rpo_terrain.xml; plane=flat rpo.xml.",
+        help="Scene alias for the QingYun parkour MJCF. Use --mujoco_xml to load a different file.",
     )
     parser.add_argument(
         "--headless",
@@ -1277,11 +1275,12 @@ if __name__ == "__main__":
     print(f"[INFO] Loading depth encoder ONNX: {depth_encoder_path}")
     print(f"[INFO] Loading actor ONNX: {actor_path}")
 
-    mjcf_dir = f"{ISAAC_ASSET_DIR}/QingYun_Robot_Description/qingyun_z1_A_rev_3_0_description/mjcf"
+    robot_xml_dir = os.path.join(os.path.dirname(__file__), "robot_xml")
+    qingyun_parkour_xml = os.path.join(robot_xml_dir, "qingyun_z1_A_rev_3_0_pakour.xml")
     scene_xml = {
-        "stairs": f"{mjcf_dir}/qingyun_z1_A_rev_3_0.xml",
-        "terrain": f"{mjcf_dir}/qingyun_z1_A_rev_3_0.xml",
-        "plane": f"{mjcf_dir}/qingyun_z1_A_rev_3_0.xml",
+        "stairs": qingyun_parkour_xml,
+        "terrain": qingyun_parkour_xml,
+        "plane": qingyun_parkour_xml,
     }
     if args.mujoco_xml:
         xml_path = args.mujoco_xml
