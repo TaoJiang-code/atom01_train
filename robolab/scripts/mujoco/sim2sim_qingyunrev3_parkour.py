@@ -9,13 +9,32 @@
 # delayed_visualizable_image subsampling.
 
 '''
+conda create -n qingyun_mujoco python=3.11 -y
+conda activate qingyun_mujoco
+
+python -m pip install --upgrade pip
+
+python -m pip install \
+  mujoco \
+  mujoco-python-viewer \
+  onnxruntime \
+  numpy \
+  scipy \
+  opencv-python \
+  matplotlib \
+  pynput \
+  tqdm
+
+cd ~/robot_code/atom01_train/atom01_train
+python -m pip install -e ./robolab
+
 python robolab/scripts/mujoco/sim2sim_qingyunrev3_parkour.py \
   --depth_encoder logs/rsl_rl/qingyun_rev3_parkour/2026-06-14_20-02-15/exported/0-depth_encoder.onnx \
   --actor logs/rsl_rl/qingyun_rev3_parkour/2026-06-14_20-02-15/exported/actor.onnx \
   --stair_steps 8 \
   --stair_length 0.30 \
   --stair_width 1.20 \
-  --stair_height 0.06 \
+  --stair_height 0.1 \
   --stair_start_x 2.0 
 '''
 
