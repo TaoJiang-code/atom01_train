@@ -29,8 +29,8 @@ cd ~/robot_code/atom01_train/atom01_train
 python -m pip install -e ./robolab
 
 python robolab/scripts/mujoco/sim2sim_qingyunrev3_parkour.py \
-  --depth_encoder logs/rsl_rl/qingyun_rev3_parkour/2026-06-14_20-02-15/exported/0-depth_encoder.onnx \
-  --actor logs/rsl_rl/qingyun_rev3_parkour/2026-06-14_20-02-15/exported/actor.onnx \
+  --depth_encoder logs/exported/0-depth_encoder.onnx \
+  --actor logs/exported/actor.onnx \
   --stair_steps 8 \
   --stair_length 0.30 \
   --stair_width 1.20 \
@@ -121,7 +121,7 @@ _CHASE_BACK_M = 2.0
 _CHASE_UP_M = 0.6
 _CHASE_LOOK_AHEAD_M = 0.8
 _CHASE_BODY_NAME = "base_link"
-_SPEED_LIMIT_X = 0.8
+_SPEED_LIMIT_X = 1.8
 _SPEED_LIMIT_Y = 0.8
 _SPEED_LIMIT_Z = 1.0
 
@@ -133,6 +133,14 @@ class CompactOverlayMujocoViewer(mujoco_viewer.MujocoViewer):
         super().__init__(*args, **kwargs)
         self.ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_200.value)
         self._velocity_table = None
+
+    @staticmethod
+    def _to_scalar_int(value: Any, default: int = -1) -> int:
+        """Convert MuJoCo viewer selection outputs to a plain Python int."""
+        arr = np.asarray(value)
+        if arr.size == 0:
+            return int(default)
+        return int(arr.reshape(-1)[0])
 
     def set_velocity_table(self, cmd_values, vel_values):
         self._velocity_table = (tuple(float(v) for v in cmd_values), tuple(float(v) for v in vel_values))
@@ -168,6 +176,118 @@ class CompactOverlayMujocoViewer(mujoco_viewer.MujocoViewer):
             for sign_x, value_x, value in zip(col_sign_x, col_value_x, values):
                 draw("+" if value >= 0.0 else "-", sign_x, row_y)
                 draw(f"{abs(value):.2f}", value_x, row_y)
+
+    def _mouse_button_callback(self, window, button, act, mods):
+        """Work around mujoco_viewer passing ``selskin`` as a NumPy array on MuJoCo 3.x."""
+        self._button_left_pressed = button == glfw.MOUSE_BUTTON_LEFT and act == glfw.PRESS
+        self._button_right_pressed = button == glfw.MOUSE_BUTTON_RIGHT and act == glfw.PRESS
+
+        x, y = glfw.get_cursor_pos(window)
+        self._last_mouse_x = int(self._scale * x)
+        self._last_mouse_y = int(self._scale * y)
+
+        self._left_double_click_pressed = False
+        self._right_double_click_pressed = False
+        time_now = glfw.get_time()
+
+        if self._button_left_pressed:
+            if self._last_left_click_time is None:
+                self._last_left_click_time = glfw.get_time()
+
+            time_diff = time_now - self._last_left_click_time
+            if 0.01 < time_diff < 0.3:
+                self._left_double_click_pressed = True
+            self._last_left_click_time = time_now
+
+        if self._button_right_pressed:
+            if self._last_right_click_time is None:
+                self._last_right_click_time = glfw.get_time()
+
+            time_diff = time_now - self._last_right_click_time
+            if 0.01 < time_diff < 0.2:
+                self._right_double_click_pressed = True
+            self._last_right_click_time = time_now
+
+        key = mods == glfw.MOD_CONTROL
+        newperturb = 0
+        if key and self.pert.select > 0:
+            if self._button_right_pressed:
+                newperturb = mujoco.mjtPertBit.mjPERT_TRANSLATE
+            if self._button_left_pressed:
+                newperturb = mujoco.mjtPertBit.mjPERT_ROTATE
+
+            if newperturb and not self.pert.active:
+                mujoco.mjv_initPerturb(self.model, self.data, self.scn, self.pert)
+        self.pert.active = newperturb
+
+        if self._left_double_click_pressed or self._right_double_click_pressed:
+            selmode = 0
+            if self._left_double_click_pressed:
+                selmode = 1
+            if self._right_double_click_pressed:
+                selmode = 2
+            if self._right_double_click_pressed and key:
+                selmode = 3
+
+            width, height = self.viewport.width, self.viewport.height
+            aspectratio = width / height
+            relx = x / width
+            rely = (self.viewport.height - y) / height
+            selpnt = np.zeros((3, 1), dtype=np.float64)
+            selgeom = np.zeros((1, 1), dtype=np.int32)
+            selflex = np.zeros((1, 1), dtype=np.int32)
+            selskin = np.zeros((1, 1), dtype=np.int32)
+
+            if tuple(int(part) for part in mujoco.__version__.split(".")[:3]) >= (3, 0, 0):
+                selbody = mujoco.mjv_select(
+                    self.model,
+                    self.data,
+                    self.vopt,
+                    aspectratio,
+                    relx,
+                    rely,
+                    self.scn,
+                    selpnt,
+                    selgeom,
+                    selflex,
+                    selskin,
+                )
+            else:
+                selbody = mujoco.mjv_select(
+                    self.model,
+                    self.data,
+                    self.vopt,
+                    aspectratio,
+                    relx,
+                    rely,
+                    self.scn,
+                    selpnt,
+                    selgeom,
+                    selskin,
+                )
+
+            scalar_selskin = self._to_scalar_int(selskin, default=-1)
+
+            if selmode == 2 or selmode == 3:
+                if selbody >= 0:
+                    self.cam.lookat = selpnt.flatten()
+                if selmode == 3 and selbody > 0:
+                    self.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
+                    self.cam.trackbodyid = selbody
+                    self.cam.fixedcamid = -1
+            else:
+                if selbody >= 0:
+                    self.pert.select = selbody
+                    self.pert.skinselect = scalar_selskin
+                    vec = selpnt.flatten() - self.data.xpos[selbody]
+                    self.pert.localpos = self.data.xmat[selbody].reshape(3, 3).dot(vec)
+                else:
+                    self.pert.select = 0
+                    self.pert.skinselect = -1
+            self.pert.active = 0
+
+        if act == glfw.RELEASE:
+            self.pert.active = 0
 
     def render(self):
         if self.render_mode == "offscreen":
