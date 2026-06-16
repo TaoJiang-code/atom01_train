@@ -11,7 +11,12 @@
 '''
 python robolab/scripts/mujoco/sim2sim_qingyunrev3_parkour.py \
   --depth_encoder logs/rsl_rl/qingyun_rev3_parkour/2026-06-14_20-02-15/exported/0-depth_encoder.onnx \
-  --actor logs/rsl_rl/qingyun_rev3_parkour/2026-06-14_20-02-15/exported/actor.onnx
+  --actor logs/rsl_rl/qingyun_rev3_parkour/2026-06-14_20-02-15/exported/actor.onnx \
+  --stair_steps 8 \
+  --stair_length 0.30 \
+  --stair_width 1.20 \
+  --stair_height 0.06 \
+  --stair_start_x 2.0 
 '''
 
 from __future__ import annotations
@@ -19,9 +24,11 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import tempfile
 import time
 from collections import deque
 from typing import Any, ClassVar
+import xml.etree.ElementTree as ET
 
 import cv2
 import glfw
@@ -845,6 +852,67 @@ def run_onnx_single_batch(session: Any, input_name: str, array: np.ndarray, fixe
     return session.run(None, {input_name: array})[0]
 
 
+def make_stair_mjcf(
+    source_xml: str,
+    *,
+    enabled: bool,
+    steps: int,
+    step_length: float,
+    width: float,
+    step_height: float,
+    start_x: float,
+    center_y: float,
+    floor_z: float,
+) -> str:
+    """Return an MJCF path, appending a generated staircase when enabled."""
+    if not enabled or steps <= 0:
+        return source_xml
+
+    if step_length <= 0.0 or width <= 0.0 or step_height <= 0.0:
+        raise ValueError("Stair dimensions must be positive.")
+
+    tree = ET.parse(source_xml)
+    root = tree.getroot()
+    compiler = root.find("compiler")
+    if compiler is not None:
+        meshdir = compiler.get("meshdir")
+        if meshdir and not os.path.isabs(meshdir):
+            source_dir = os.path.dirname(os.path.abspath(source_xml))
+            compiler.set("meshdir", os.path.abspath(os.path.normpath(os.path.join(source_dir, meshdir))))
+    worldbody = root.find("worldbody")
+    if worldbody is None:
+        raise ValueError(f"MJCF file has no <worldbody>: {source_xml}")
+
+    for i in range(steps):
+        block_height = (i + 1) * step_height
+        x = start_x + (i + 0.5) * step_length
+        z = floor_z + 0.5 * block_height
+        ET.SubElement(
+            worldbody,
+            "geom",
+            {
+                "name": f"generated_stair_{i + 1:02d}",
+                "type": "box",
+                "pos": f"{x:.6f} {center_y:.6f} {z:.6f}",
+                "size": f"{0.5 * step_length:.6f} {0.5 * width:.6f} {0.5 * block_height:.6f}",
+                "rgba": "0.45 0.45 0.45 1",
+                "friction": "0.8 0.01 0.001",
+                "condim": "3",
+            },
+        )
+
+    temp = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix="_qingyun_stairs.xml",
+        prefix="sim2sim_",
+        delete=False,
+        encoding="utf-8",
+    )
+    with temp:
+        tree.write(temp, encoding="unicode", xml_declaration=False)
+    return temp.name
+
+
 def run_mujoco_onnx(
     depth_encoder: Any,
     actor: Any,
@@ -1256,6 +1324,54 @@ if __name__ == "__main__":
         help="Scene alias for the QingYun parkour MJCF. Use --mujoco_xml to load a different file.",
     )
     parser.add_argument(
+        "--no_stairs",
+        action="store_true",
+        default=False,
+        help="Disable generated stairs and use the base MJCF only.",
+    )
+    parser.add_argument(
+        "--stair_steps",
+        type=int,
+        default=6,
+        help="Number of generated stair levels.",
+    )
+    parser.add_argument(
+        "--stair_length",
+        type=float,
+        default=0.28,
+        help="Tread length of each stair level in meters; total length is stair_steps * stair_length.",
+    )
+    parser.add_argument(
+        "--stair_width",
+        type=float,
+        default=1.2,
+        help="Side-to-side width of the generated staircase in meters.",
+    )
+    parser.add_argument(
+        "--stair_height",
+        type=float,
+        default=0.05,
+        help="Vertical height added by each stair level in meters.",
+    )
+    parser.add_argument(
+        "--stair_start_x",
+        type=float,
+        default=0.75,
+        help="X position where the first generated stair begins, in meters.",
+    )
+    parser.add_argument(
+        "--stair_center_y",
+        type=float,
+        default=0.0,
+        help="Y center of the generated staircase, in meters.",
+    )
+    parser.add_argument(
+        "--floor_z",
+        type=float,
+        default=-0.6003,
+        help="Ground height used as the base Z for generated stairs.",
+    )
+    parser.add_argument(
         "--headless",
         action="store_true",
         default=False,
@@ -1286,6 +1402,18 @@ if __name__ == "__main__":
         xml_path = args.mujoco_xml
     else:
         xml_path = scene_xml[args.scene]
+    xml_path = make_stair_mjcf(
+        xml_path,
+        enabled=not args.no_stairs and args.scene == "stairs",
+        steps=args.stair_steps,
+        step_length=args.stair_length,
+        width=args.stair_width,
+        step_height=args.stair_height,
+        start_x=args.stair_start_x,
+        center_y=args.stair_center_y,
+        floor_z=args.floor_z,
+    )
+    print(f"[INFO] Loading MuJoCo XML: {xml_path}")
 
     class Sim2simCfg:
         class sim_config:
