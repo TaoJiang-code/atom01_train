@@ -41,7 +41,7 @@ except ImportError as e:
 else:
     _ORT_IMPORT_ERROR = None
 
-from robolab.assets import ISAAC_DATA_DIR
+from robolab.assets import ISAAC_ASSET_DIR
 
 # Depth pipeline (encoder input aligned with ``noise_model.crop_and_resize``):
 #   ⑴ MuJoCo offscreen depth at native **64×36** (same 16:9 as Isaac ray grid).
@@ -67,8 +67,8 @@ _OBS_HISTORY_KEYS: tuple[str, ...] = (
     "joint_vel",
     "actions",
 )
-# Extrinsic: same as camera.offset.pos — camera origin in torso_link frame (world: x + R_torso @ pos).
-_CAMERA_OFFSET_POS_BODY = np.array([0.0875, 0.01, 0.20568], dtype=np.float64)
+# Extrinsic: same as camera.offset.pos -- camera origin in p_torso_yaw_link frame.
+_CAMERA_OFFSET_POS_BODY = np.array([0.078, 0.0, 0.206], dtype=np.float64)
 # Offset rot (w,x,y,z) per GroupedRayCasterCameraCfg / IsaacLab (not scipy order).
 _CAMERA_OFFSET_QUAT_WXYZ = np.array([0.866, 0.0, 0.5, 0.0], dtype=np.float64)
 # Depth clip: MJCF <map znear> × extent; keep small to avoid near-field stair tread culling.
@@ -607,7 +607,7 @@ def set_depth_camera_free(
     torso_body_name: str,
     vertical_fov_deg: float,
 ) -> None:
-    """Place FREE camera at torso_link with Isaac offset; optical axis matches IsaacLab ray caster."""
+    """Place FREE camera at the camera body with Isaac offset; optical axis matches IsaacLab ray caster."""
     pose = get_depth_camera_pose(data, model, torso_body_name)
     eye = pose["eye"]
     lookat = eye + pose["forward"]
@@ -831,6 +831,22 @@ def build_onnx_sessions(
     return enc, act
 
 
+def get_fixed_onnx_batch(session: Any) -> int | None:
+    """Return a fixed ONNX batch dimension, or None when the model uses dynamic batch."""
+    batch_dim = session.get_inputs()[0].shape[0]
+    return batch_dim if isinstance(batch_dim, int) and batch_dim > 0 else None
+
+
+def run_onnx_single_batch(session: Any, input_name: str, array: np.ndarray, fixed_batch: int | None) -> np.ndarray:
+    """Run a single-sample input through ONNX, repeating it when export fixed the batch size."""
+    if fixed_batch is not None and array.shape[0] != fixed_batch:
+        if array.shape[0] != 1:
+            raise ValueError(f"Expected single-sample input before fixed-batch repeat, got shape {array.shape}.")
+        array = np.repeat(array, fixed_batch, axis=0)
+        return session.run(None, {input_name: array})[0][:1]
+    return session.run(None, {input_name: array})[0]
+
+
 def run_mujoco_onnx(
     depth_encoder: Any,
     actor: Any,
@@ -851,6 +867,12 @@ def run_mujoco_onnx(
 ) -> None:
     enc_in_name = depth_encoder.get_inputs()[0].name
     act_in_name = actor.get_inputs()[0].name
+    enc_fixed_batch = get_fixed_onnx_batch(depth_encoder)
+    act_fixed_batch = get_fixed_onnx_batch(actor)
+    if enc_fixed_batch not in (None, 1):
+        print(f"[INFO] Depth encoder ONNX has fixed batch={enc_fixed_batch}; sim2sim will repeat batch-1 input.")
+    if act_fixed_batch not in (None, 1):
+        print(f"[INFO] Actor ONNX has fixed batch={act_fixed_batch}; sim2sim will repeat batch-1 input.")
 
     viewer_stride = max(
         1,
@@ -1048,14 +1070,16 @@ def run_mujoco_onnx(
 
             flat_proprio = np.concatenate([hist[k].flat() for k in _OBS_HISTORY_KEYS], axis=0)
 
-            latent = depth_encoder.run(None, {enc_in_name: depth_bchw})[0]
+            latent = run_onnx_single_batch(depth_encoder, enc_in_name, depth_bchw, enc_fixed_batch)
             actor_in = np.concatenate([flat_proprio, latent.reshape(-1)], axis=0)[None, :]
             if debug_obs:
                 print(
                     f"[debug] flat_proprio={flat_proprio.shape} latent={latent.shape} actor_in={actor_in.shape}"
                 )
 
-            action[:] = actor.run(None, {act_in_name: actor_in.astype(np.float32)})[0].reshape(-1)
+            action[:] = run_onnx_single_batch(
+                actor, act_in_name, actor_in.astype(np.float32), act_fixed_batch
+            ).reshape(-1)
 
             target_q = action * cfg.robot_config.action_scale
             target_pos[:] = cfg.robot_config.default_pos.copy()
@@ -1253,11 +1277,11 @@ if __name__ == "__main__":
     print(f"[INFO] Loading depth encoder ONNX: {depth_encoder_path}")
     print(f"[INFO] Loading actor ONNX: {actor_path}")
 
-    mjcf_dir = f"{ISAAC_DATA_DIR}/robots/roboparty/rpo/mjcf"
+    mjcf_dir = f"{ISAAC_ASSET_DIR}/QingYun_Robot_Description/qingyun_z1_A_rev_3_0_description/mjcf"
     scene_xml = {
-        "stairs": f"{mjcf_dir}/rpo_stairs.xml",
-        "terrain": f"{mjcf_dir}/rpo_terrain.xml",
-        "plane": f"{mjcf_dir}/rpo.xml",
+        "stairs": f"{mjcf_dir}/qingyun_z1_A_rev_3_0.xml",
+        "terrain": f"{mjcf_dir}/qingyun_z1_A_rev_3_0.xml",
+        "plane": f"{mjcf_dir}/qingyun_z1_A_rev_3_0.xml",
     }
     if args.mujoco_xml:
         xml_path = args.mujoco_xml
@@ -1270,26 +1294,45 @@ if __name__ == "__main__":
             sim_duration = 1_000_000.0
             dt = 0.005
             decimation = 4
-            depth_camera_body = "torso_link"
+            depth_camera_body = "p_torso_yaw_link"
 
         class robot_config:
             kps = np.array(
-                [100, 100, 100, 150, 40, 40, 100, 100, 100, 150, 40, 40, 150, 40, 40, 40, 30, 20, 40, 40, 40, 30, 20],
+                [
+                    42.5, 30.0, 30.0, 30.0, 30.0,
+                    42.5, 30.0, 30.0, 30.0, 30.0,
+                    15.0,
+                    10.0, 10.0, 10.0, 10.0,
+                    10.0, 10.0, 10.0, 10.0,
+                ],
                 dtype=np.double,
             )
             kds = np.array(
-                [3.3, 3.3, 3.3, 5.0, 2.0, 2.0, 3.3, 3.3, 3.3, 5.0, 2.0, 2.0, 5.0, 2.0, 2.0, 2.0, 1.5, 1.0, 2.0, 2.0, 2.0, 1.5, 1.0],
+                [
+                    4.29, 3.0, 3.0, 3.0, 3.0,
+                    4.29, 3.0, 3.0, 3.0, 3.0,
+                    1.0,
+                    0.7, 0.7, 0.7, 0.7,
+                    0.7, 0.7, 0.7, 0.7,
+                ],
                 dtype=np.double,
             )
-            default_pos = np.array(
-                [0, 0, -0.1, 0.3, -0.2, 0, 0, 0, -0.1, 0.3, -0.2, 0, 0, 0.18, 0.06, 0, 0.78, 0, 0.18, -0.06, 0, 0.78, 0],
+            default_pos = np.zeros(19, dtype=np.double)
+            tau_limit = np.array(
+                [
+                    27.0, 27.0, 27.0, 27.0, 27.0,
+                    27.0, 27.0, 27.0, 27.0, 27.0,
+                    10.0,
+                    7.0, 7.0, 4.0, 4.0,
+                    7.0, 7.0, 4.0, 4.0,
+                ],
                 dtype=np.double,
             )
-            tau_limit = 200.0 * np.ones(23, dtype=np.double)
             frame_stack = 8  # obs history length
-            num_actions = 23
+            num_actions = 19
             action_scale = 0.25
-            usd2urdf = [0, 6, 12, 1, 7, 13, 18, 2, 8, 14, 19, 3, 9, 15, 20, 4, 10, 16, 21, 5, 11, 17, 22]
+            # Isaac/Lab policy order -> QingYun MJCF actuator order.
+            usd2urdf = [5, 0, 10, 6, 1, 15, 11, 7, 2, 16, 12, 8, 3, 17, 13, 9, 4, 18, 14]
 
     enc_sess, act_sess = build_onnx_sessions(
         depth_encoder_path, actor_path, providers=_SIM2SIM_PERF_ONNX_PROVIDERS
