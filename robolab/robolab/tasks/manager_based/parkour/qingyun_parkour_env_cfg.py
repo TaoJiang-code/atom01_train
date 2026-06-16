@@ -14,6 +14,76 @@ from robolab.tasks.manager_based.parkour.parkour_env_cfg import ROUGH_TERRAINS_C
 AMP_NUM_STEPS = 3
 QINGYUN_ROOT_HEIGHT_MIN = 0.35
 
+# Tune QingYun command sampling here.
+# Format: (min, max), units are m/s for lin_vel_x/y and rad/s for ang_vel_z.
+QINGYUN_COMMAND_RANGES = {
+    "lin_vel_x": (0.0, 0.0),
+    "lin_vel_y": (0.0, 0.0),
+    "ang_vel_z": (-1.0, 1.0),
+}
+QINGYUN_TERRAIN_VELOCITY_RANGES = {
+    "perlin_rough": {"lin_vel_x": (0.4, 1.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+    "perlin_rough_walk": {"lin_vel_x": (0.4, 1.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (0.0, 0.0)},
+    "perlin_rough_trun": {"lin_vel_x": (0.0, 0.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+    "perlin_rough_stand": {"lin_vel_x": (0.0, 0.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (0.0, 0.0)},
+    "square_gaps": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+    "pyramid_stairs_32": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+    "pyramid_stairs_30": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+    "pyramid_stairs_28": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+    "pyramid_stairs_inv_32": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+    "pyramid_stairs_inv_30": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+    "pyramid_stairs_inv_28": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+    "hf_pyramid_slope_inv": {"lin_vel_x": (0.4, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)},
+}
+QINGYUN_RANDOM_VELOCITY_TERRAIN = ["perlin_rough_stand"]
+QINGYUN_COMMAND_RESAMPLING_TIME_RANGE = (8.0, 12.0)
+QINGYUN_REL_STANDING_ENVS = 0.05
+QINGYUN_STRAIGHT_TARGET_PROB = 0.8
+QINGYUN_ONLY_POSITIVE_LIN_VEL_X = True
+QINGYUN_LIN_VEL_THRESHOLD = 0.0
+QINGYUN_ANG_VEL_THRESHOLD = 0.0
+
+# Tune QingYun reward weights here.
+# Set a weight to 0.0 to keep the term active but make it contribute no reward.
+QINGYUN_REWARD_WEIGHTS = {
+    # Task rewards
+    "track_lin_vel_xy_exp": 5.0,
+    "track_ang_vel_z_exp": 5.0,
+    "heading_error": -1.0,
+    # "dont_wait": -0.5,
+    "dont_wait": -2.0,
+    "is_alive": 3.0,
+    "lin_vel_z_l2": -5.0,
+    "stand_still": -1.0,
+    # Robot-specific regularization
+    "qingyun_hip_yaw_joint_sign_penalty": -10.0,
+    # "volume_points_penetration_feet": -1.0,
+    # "volume_points_penetration_knee": -1.0,
+    "volume_points_penetration_feet": -0.5,
+    "volume_points_penetration_knee": -0.5,
+    "feet_slide": -1.0,
+    "joint_deviation_upper_body": -0.01,
+    "freeze_upper_torso": -0.8,
+    "ang_vel_xy_l2": -0.1,
+    "dof_torques_l2": -1.0e-5,
+    "dof_acc_l2": -2.5e-7,
+    "dof_vel_l2": -1.0e-4,
+    "joint_regularization": -1.0e-4,
+    "action_rate_l2": -0.01,
+    "flat_orientation_l2": -3.0,
+    "pelvis_orientation_l2": -3.0,
+    "feet_flat_ori": -0.4,
+    "feet_at_plane": -0.1,
+    "sound_suppression": -5.0e-4,
+    "energy": -5.0e-5,
+    # Safety rewards
+    "dof_pos_limits": -1.0,
+    "dof_vel_limits": -1.0,
+    "torque_limits": -0.01,
+    "undesired_contacts": -1.0,
+    "feet_stumble": -1.0,
+}
+
 QINGYUN_KEY_BODY_NAMES = [
     "lp_foot_pitch_link",
     "rp_foot_pitch_link",
@@ -96,6 +166,10 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
             "B15_-__Walk_turn_around_stageii": 1,
             "turn_l": 1,
             "turn_r": 1,
+
+            "move_back": 1,
+            "move_l": 1,
+            "move_r": 1,
         }
 
         self.animation.animation.num_steps_to_use = AMP_NUM_STEPS
@@ -108,7 +182,28 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
             )
         }
 
+        self._apply_qingyun_velocity_commands()
         self._apply_qingyun_link_and_joint_names()
+        self._apply_qingyun_reward_weights()
+
+    def _apply_qingyun_velocity_commands(self):
+        command = self.commands.base_velocity
+        command.resampling_time_range = QINGYUN_COMMAND_RESAMPLING_TIME_RANGE
+        command.rel_standing_envs = QINGYUN_REL_STANDING_ENVS
+        command.straight_target_prob = QINGYUN_STRAIGHT_TARGET_PROB
+        command.ranges = mdp.PoseVelocityCommandCfg.Ranges(**QINGYUN_COMMAND_RANGES)
+        command.velocity_ranges = copy.deepcopy(QINGYUN_TERRAIN_VELOCITY_RANGES)
+        command.random_velocity_terrain = list(QINGYUN_RANDOM_VELOCITY_TERRAIN)
+        command.only_positive_lin_vel_x = QINGYUN_ONLY_POSITIVE_LIN_VEL_X
+        command.lin_vel_threshold = QINGYUN_LIN_VEL_THRESHOLD
+        command.ang_vel_threshold = QINGYUN_ANG_VEL_THRESHOLD
+
+    def _apply_qingyun_reward_weights(self):
+        rewards = self.rewards.rewards
+        for term_name, weight in QINGYUN_REWARD_WEIGHTS.items():
+            term = getattr(rewards, term_name, None)
+            if term is not None:
+                term.weight = weight
 
     def _apply_qingyun_link_and_joint_names(self):
         foot_body_pattern = ".*_foot_pitch_link"
