@@ -48,7 +48,7 @@ python robolab/scripts/mujoco/sim2sim_qingyunrev3_parkour.py \
   --stair_height 0.08 \
   --stair_start_x 0.75 \
   --trench_runup 0.70 \
-  --trench_width 0.10 \
+  --trench_width 0.30 \
   --landing_height 0.20 \
   --landing_length 0.90 \
   --ramp_length 2.00 \
