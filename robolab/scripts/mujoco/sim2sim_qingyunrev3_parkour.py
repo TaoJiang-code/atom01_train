@@ -39,8 +39,8 @@ python robolab/scripts/mujoco/sim2sim_qingyunrev3_parkour.py \
   --stair_start_x 2.0
 
 python robolab/scripts/mujoco/sim2sim_qingyunrev3_parkour.py \
-  --depth_encoder logs/exported/0-depth_encoder.onnx \
-  --actor logs/exported/actor.onnx \
+  --depth_encoder logs/exported_2/0-depth_encoder.onnx \
+  --actor logs/exported_2/actor.onnx \
   --stair_steps 6 \
   --stair_length 0.30 \
   --stair_width 1.20 \

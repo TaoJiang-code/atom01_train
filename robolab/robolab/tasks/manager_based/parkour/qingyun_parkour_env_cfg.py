@@ -51,7 +51,7 @@ QINGYUN_REWARD_WEIGHTS = {
     "track_ang_vel_z_exp": 5.0,
     "heading_error": -1.0,
     # "dont_wait": -0.5,
-    "dont_wait": -2.0,
+    "dont_wait": -5.0,
     "is_alive": 3.0,
     "lin_vel_z_l2": -5.0,
     "stand_still": -1.0,
@@ -167,9 +167,9 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
             "turn_l": 1,
             "turn_r": 1,
 
-            "move_back": 1,
-            "move_l": 1,
-            "move_r": 1,
+            # "move_back": 1,
+            # "move_l": 1,
+            # "move_r": 1,
         }
 
         self.animation.animation.num_steps_to_use = AMP_NUM_STEPS
