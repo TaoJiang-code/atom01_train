@@ -57,10 +57,8 @@ QINGYUN_REWARD_WEIGHTS = {
     "stand_still": -1.0,
     # Robot-specific regularization
     "qingyun_hip_yaw_joint_sign_penalty": -10.0,
-    # "volume_points_penetration_feet": -1.0,
-    # "volume_points_penetration_knee": -1.0,
-    "volume_points_penetration_feet": -0.5,
-    "volume_points_penetration_knee": -0.5,
+    "volume_points_penetration_feet": -1.0,
+    "volume_points_penetration_knee": -1.0,
     "feet_slide": -1.0,
     "joint_deviation_upper_body": -0.01,
     "freeze_upper_torso": -0.8,
