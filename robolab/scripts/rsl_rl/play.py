@@ -468,6 +468,6 @@ conda activate atom01_train
 python robolab/scripts/rsl_rl/play.py \
   --task QingYun-Rev3-Parkour-Play \
   --num_envs 1 \
-  --checkpoint logs/rsl_rl/qingyun_rev3_parkour/2026-06-17_11-14-24/model_2000.pt
+  --checkpoint logs/rsl_rl/qingyun_rev3_parkour/2026-06-17_19-22-58/model_5000.pt
 
 '''

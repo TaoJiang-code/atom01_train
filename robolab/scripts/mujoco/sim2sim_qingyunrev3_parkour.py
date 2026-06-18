@@ -39,8 +39,8 @@ python robolab/scripts/mujoco/sim2sim_qingyunrev3_parkour.py \
   --stair_start_x 2.0
 
 python robolab/scripts/mujoco/sim2sim_qingyunrev3_parkour.py \
-  --depth_encoder logs/exported_1/0-depth_encoder.onnx \
-  --actor logs/exported_1/actor.onnx \
+  --depth_encoder logs/exported_2/0-depth_encoder.onnx \
+  --actor logs/exported_2/actor.onnx \
   --stair_steps 6 \
   --stair_length 0.30 \
   --stair_width 1.20 \
@@ -1761,10 +1761,10 @@ if __name__ == "__main__":
         class robot_config:
             kps = np.array(
                 [
-                    # 42.5, 30.0, 30.0, 30.0, 30.0,
-                    # 42.5, 30.0, 30.0, 30.0, 30.0,
-                    100.0, 100.0, 100.0, 100.0, 100.0,
-                    100.0, 100.0, 100.0, 100.0, 100.0,
+                    42.5, 30.0, 30.0, 30.0, 30.0,
+                    42.5, 30.0, 30.0, 30.0, 30.0,
+                    # 100.0, 100.0, 100.0, 100.0, 100.0,
+                    # 100.0, 100.0, 100.0, 100.0, 100.0,
                     15.0,
                     10.0, 10.0, 10.0, 10.0,
                     10.0, 10.0, 10.0, 10.0,
