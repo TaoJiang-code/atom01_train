@@ -189,16 +189,16 @@
     </body>
   </worldbody>
   <actuator>
-    <motor name="rw_hip_pitch_joint_motor" joint="rw_hip_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-120 120" />
-    <motor name="rw_hip_roll_joint_motor" joint="rw_hip_roll_joint" gear="1" ctrllimited="true" ctrlrange="-120 120" />
-    <motor name="rw_hip_yaw_joint_motor" joint="rw_hip_yaw_joint" gear="1" ctrllimited="true" ctrlrange="-120 120" />
-    <motor name="rw_knee_pitch_joint_motor" joint="rw_knee_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-120 120" />
-    <motor name="rw_foot_pitch_joint_motor" joint="rw_foot_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-120 120" />
-    <motor name="lw_hip_pitch_joint_motor" joint="lw_hip_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-120 120" />
-    <motor name="lw_hip_roll_joint_motor" joint="lw_hip_roll_joint" gear="1" ctrllimited="true" ctrlrange="-120 120" />
-    <motor name="lw_hip_yaw_joint_motor" joint="lw_hip_yaw_joint" gear="1" ctrllimited="true" ctrlrange="-120 120" />
-    <motor name="lw_knee_pitch_joint_motor" joint="lw_knee_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-120 120" />
-    <motor name="lw_foot_pitch_joint_motor" joint="lw_foot_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-120 120" />
+    <motor name="rw_hip_pitch_joint_motor" joint="rw_hip_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-27 27" />
+    <motor name="rw_hip_roll_joint_motor" joint="rw_hip_roll_joint" gear="1" ctrllimited="true" ctrlrange="-27 27" />
+    <motor name="rw_hip_yaw_joint_motor" joint="rw_hip_yaw_joint" gear="1" ctrllimited="true" ctrlrange="-27 27" />
+    <motor name="rw_knee_pitch_joint_motor" joint="rw_knee_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-27 27" />
+    <motor name="rw_foot_pitch_joint_motor" joint="rw_foot_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-27 27" />
+    <motor name="lw_hip_pitch_joint_motor" joint="lw_hip_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-27 27" />
+    <motor name="lw_hip_roll_joint_motor" joint="lw_hip_roll_joint" gear="1" ctrllimited="true" ctrlrange="-27 27" />
+    <motor name="lw_hip_yaw_joint_motor" joint="lw_hip_yaw_joint" gear="1" ctrllimited="true" ctrlrange="-27 27" />
+    <motor name="lw_knee_pitch_joint_motor" joint="lw_knee_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-27 27" />
+    <motor name="lw_foot_pitch_joint_motor" joint="lw_foot_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-27 27" />
     <motor name="waist_yaw_joint_motor" joint="waist_yaw_joint" gear="1" ctrllimited="true" ctrlrange="-17 17" />
     <motor name="rw_shoulder_pitch_joint_motor" joint="rw_shoulder_pitch_joint" gear="1" ctrllimited="true" ctrlrange="-6 6" />
     <motor name="rw_arm_roll_joint_motor" joint="rw_arm_roll_joint" gear="1" ctrllimited="true" ctrlrange="-6 6" />
