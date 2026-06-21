@@ -1763,8 +1763,8 @@ if __name__ == "__main__":
                 [
                     # 42.5, 30.0, 30.0, 30.0, 30.0,
                     # 42.5, 30.0, 30.0, 30.0, 30.0,
-                    42.5, 30.0, 30.0, 42.5, 42.5,
-                    42.5, 30.0, 30.0, 42.5, 42.5,
+                    60.0, 30.0, 30.0, 60.0, 60.0,
+                    60.0, 30.0, 30.0, 60.0, 60.0,
                     15.0,
                     10.0, 10.0, 10.0, 10.0,
                     10.0, 10.0, 10.0, 10.0,
@@ -1799,7 +1799,7 @@ if __name__ == "__main__":
             action_scale = 0.25
             # Isaac/Lab policy order -> QingYun MJCF actuator order.
             usd2urdf = [5, 0, 10, 6, 1, 15, 11, 7, 2, 16, 12, 8, 3, 17, 13, 9, 4, 18, 14]
-
+    
     enc_sess, act_sess = build_onnx_sessions(
         depth_encoder_path, actor_path, providers=_SIM2SIM_PERF_ONNX_PROVIDERS
     )

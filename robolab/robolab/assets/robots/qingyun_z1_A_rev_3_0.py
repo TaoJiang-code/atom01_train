@@ -231,11 +231,11 @@ QINGYUN_Z1_A_REV_3_0_19_DOF_CFG = qingyun_z1_A_rev_3_0_19_dof_ArticulationCfg(
                 ".*_foot_pitch_joint": 5.45
             },
             stiffness={
-                ".*_hip_pitch_joint": 42.5,
+                ".*_hip_pitch_joint": 60.0,
                 ".*_hip_roll_joint": 30.0,
                 ".*_hip_yaw_joint": 30.0,
-                ".*_knee_pitch_joint": 42.5,
-                ".*_foot_pitch_joint": 42.5,
+                ".*_knee_pitch_joint": 60.0,
+                ".*_foot_pitch_joint": 60.0,
             },
             # effort_limit_sim=120.0,
             # velocity_limit_sim=25.0,
