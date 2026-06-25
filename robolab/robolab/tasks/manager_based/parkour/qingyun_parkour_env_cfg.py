@@ -47,8 +47,8 @@ QINGYUN_ANG_VEL_THRESHOLD = 0.0
 # Set a weight to 0.0 to keep the term active but make it contribute no reward.
 QINGYUN_REWARD_WEIGHTS = {
     # Task rewards
-    "track_lin_vel_xy_exp": 7.0,
-    "track_ang_vel_z_exp": 7.0,
+    "track_lin_vel_xy_exp": 5.0,
+    "track_ang_vel_z_exp": 5.0,
     "heading_error": -1.0,
     "dont_wait": -0.5,
     "is_alive": 3.0,
@@ -151,10 +151,10 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
             ROBOLAB_ROOT_DIR, "data", "motions", "qingyun_lab"
         )
         self.motion_data.motion_dataset.motion_data_weights = {
-            "36_01": 1,
-            "36_11": 1,
-            "114_08": 1,
-            "114_09": 1,
+            "36_01": 2,
+            "36_11": 2,
+            "114_08": 2,
+            "114_09": 2,
             "A1-_Stand_stageii": 1,
             "B9_-__Walk_turn_left_90_stageii": 1,
             "B10_-__Walk_turn_left_45_stageii": 1,
