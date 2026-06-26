@@ -7,12 +7,37 @@ from isaaclab.utils import configclass
 
 from robolab import ROBOLAB_ROOT_DIR
 from robolab.assets.robots.qingyun_z1_A_rev_3_0 import QINGYUN_Z1_A_REV_3_0_19_DOF_CFG
-from robolab.sensors import get_link_prim_targets
+from robolab.sensors import Grid3dPointsGeneratorCfg, get_link_prim_targets
 import robolab.tasks.manager_based.parkour.mdp as mdp
 from robolab.tasks.manager_based.parkour.parkour_env_cfg import ROUGH_TERRAINS_CFG, ParkourEnvCfg
 
 AMP_NUM_STEPS = 3
 QINGYUN_ROOT_HEIGHT_MIN = 0.35
+
+# Tune QingYun foot/knee volume-point grids here.
+# These points are attached to foot/knee links and used by volume_points_penetration rewards.
+QINGYUN_LEG_VOLUME_POINTS_GRID = Grid3dPointsGeneratorCfg(
+    x_min=-0.05,
+    x_max=0.05,
+    x_num=19,
+    y_min=-0.03,
+    y_max=0.03,
+    y_num=7,
+    z_min=-0.04,
+    z_max=-0.02,
+    z_num=3,
+)
+QINGYUN_KNEE_VOLUME_POINTS_GRID = Grid3dPointsGeneratorCfg(
+    x_min=-0.03,
+    x_max=0.04,
+    x_num=8,
+    y_min=-0.03,
+    y_max=0.03,
+    y_num=7,
+    z_min=-0.3,
+    z_max=0.0,
+    z_num=31,
+)
 
 # Tune QingYun command sampling here.
 # Format: (min, max), units are m/s for lin_vel_x/y and rad/s for ang_vel_z.
@@ -47,8 +72,8 @@ QINGYUN_ANG_VEL_THRESHOLD = 0.0
 # Set a weight to 0.0 to keep the term active but make it contribute no reward.
 QINGYUN_REWARD_WEIGHTS = {
     # Task rewards
-    "track_lin_vel_xy_exp": 10.0,
-    "track_ang_vel_z_exp": 10.0,
+    "track_lin_vel_xy_exp": 5.0,
+    "track_ang_vel_z_exp": 5.0,
     "heading_error": -1.0,
     "dont_wait": -0.5,
     "is_alive": 3.0,
@@ -79,6 +104,35 @@ QINGYUN_REWARD_WEIGHTS = {
     "torque_limits": -0.01,
     "undesired_contacts": -1.0,
     "feet_stumble": -1.0,
+}
+
+# Tune QingYun curriculum schedules for reward weights here.
+# These values override the inherited curriculum terms from parkour_env_cfg.py.
+QINGYUN_VOLUME_POINTS_PENETRATION_WEIGHT_CURRICULUM = {
+    "feet": {
+        "term_name": "volume_points_penetration_feet",
+        "init_weight": -1.0,
+        "final_weight": -5.0,
+        "lin_vel_threshold": (0.7, 0.9),
+        "ang_vel_threshold": (0.0, 0.0),
+        "step_size": 0.03,
+    },
+    "knee": {
+        "term_name": "volume_points_penetration_knee",
+        "init_weight": -1.0,
+        "final_weight": -5.0,
+        "lin_vel_threshold": (0.7, 0.9),
+        "ang_vel_threshold": (0.0, 0.0),
+        "step_size": 0.03,
+    },
+    "feet_stumble": {
+        "term_name": "feet_stumble",
+        "init_weight": -1.0,
+        "final_weight": -5.0,
+        "lin_vel_threshold": (0.7, 0.9),
+        "ang_vel_threshold": (0.0, 0.0),
+        "step_size": 0.03,
+    },
 }
 
 QINGYUN_KEY_BODY_NAMES = [
@@ -179,9 +233,15 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
             )
         }
 
+        self._apply_qingyun_volume_point_grids()
         self._apply_qingyun_velocity_commands()
         self._apply_qingyun_link_and_joint_names()
         self._apply_qingyun_reward_weights()
+        self._apply_qingyun_curriculum_weights()
+
+    def _apply_qingyun_volume_point_grids(self):
+        self.scene.leg_volume_points.points_generator = copy.deepcopy(QINGYUN_LEG_VOLUME_POINTS_GRID)
+        self.scene.knee_volume_points.points_generator = copy.deepcopy(QINGYUN_KNEE_VOLUME_POINTS_GRID)
 
     def _apply_qingyun_velocity_commands(self):
         command = self.commands.base_velocity
@@ -201,6 +261,17 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
             term = getattr(rewards, term_name, None)
             if term is not None:
                 term.weight = weight
+
+    def _apply_qingyun_curriculum_weights(self):
+        self.curriculum.volume_points_penetration_weight_feet.params = copy.deepcopy(
+            QINGYUN_VOLUME_POINTS_PENETRATION_WEIGHT_CURRICULUM["feet"]
+        )
+        self.curriculum.volume_points_penetration_weight_knee.params = copy.deepcopy(
+            QINGYUN_VOLUME_POINTS_PENETRATION_WEIGHT_CURRICULUM["knee"]
+        )
+        self.curriculum.feet_stumble_weight.params = copy.deepcopy(
+            QINGYUN_VOLUME_POINTS_PENETRATION_WEIGHT_CURRICULUM["feet_stumble"]
+        )
 
     def _apply_qingyun_link_and_joint_names(self):
         foot_body_pattern = ".*_foot_pitch_link"
