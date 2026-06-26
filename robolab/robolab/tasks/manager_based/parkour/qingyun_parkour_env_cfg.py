@@ -47,8 +47,8 @@ QINGYUN_ANG_VEL_THRESHOLD = 0.0
 # Set a weight to 0.0 to keep the term active but make it contribute no reward.
 QINGYUN_REWARD_WEIGHTS = {
     # Task rewards
-    "track_lin_vel_xy_exp": 5.0,
-    "track_ang_vel_z_exp": 5.0,
+    "track_lin_vel_xy_exp": 10.0,
+    "track_ang_vel_z_exp": 10.0,
     "heading_error": -1.0,
     "dont_wait": -0.5,
     "is_alive": 3.0,
