@@ -216,13 +216,13 @@ QINGYUN_Z1_A_REV_3_0_19_DOF_CFG = qingyun_z1_A_rev_3_0_19_dof_ArticulationCfg(
                 ".*_knee_pitch_joint",
                 ".*_foot_pitch_joint",
             ],
-            # effort_limit_sim={
-            #     ".*_hip_pitch_joint": 27.0,
-            #     ".*_hip_roll_joint": 27.0,
-            #     ".*_hip_yaw_joint": 27.0,
-            #     ".*_knee_pitch_joint": 27.0,
-            #     ".*_foot_pitch_joint": 27.0
-            # },
+            effort_limit_sim={
+                ".*_hip_pitch_joint": 27.0,
+                ".*_hip_roll_joint": 27.0,
+                ".*_hip_yaw_joint": 27.0,
+                ".*_knee_pitch_joint": 27.0,
+                ".*_foot_pitch_joint": 27.0
+            },
             velocity_limit_sim={
                 ".*_hip_pitch_joint": 5.45,
                 ".*_hip_roll_joint": 5.45,
@@ -238,13 +238,13 @@ QINGYUN_Z1_A_REV_3_0_19_DOF_CFG = qingyun_z1_A_rev_3_0_19_dof_ArticulationCfg(
                 ".*_foot_pitch_joint": 60.0,
             },
 
-            effort_limit_sim={
-                ".*_hip_pitch_joint": 120.0,
-                ".*_hip_roll_joint": 27.0,
-                ".*_hip_yaw_joint": 27.0,
-                ".*_knee_pitch_joint": 120.0,
-                ".*_foot_pitch_joint": 27.0
-            },
+            # effort_limit_sim={
+            #     ".*_hip_pitch_joint": 120.0,
+            #     ".*_hip_roll_joint": 27.0,
+            #     ".*_hip_yaw_joint": 27.0,
+            #     ".*_knee_pitch_joint": 120.0,
+            #     ".*_foot_pitch_joint": 27.0
+            # },
             # velocity_limit_sim=25.0,
             # stiffness=100.0,
 
