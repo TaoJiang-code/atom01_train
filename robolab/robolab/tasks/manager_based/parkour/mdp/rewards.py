@@ -263,6 +263,175 @@ def feet_at_plane(
     return torch.sum(left_reward, dim=-1) + torch.sum(right_reward, dim=-1)
 
 
+def terrain_adaptive_foot_lift(
+    env: ManagerBasedRLEnv,
+    height_scanner_cfg: SceneEntityCfg,
+    contact_sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg,
+    command_name: str = "base_velocity",
+    forward_window: tuple[float, float] = (0.15, 0.85),
+    support_window: tuple[float, float] = (-0.25, 0.15),
+    lateral_window: float = 0.35,
+    base_clearance: float = 0.045,
+    stair_clearance_margin: float = 0.035,
+    down_stair_clearance: float = 0.06,
+    gap_clearance: float = 0.12,
+    gap_depth_scale: float = 0.5,
+    slope_clearance: float = 0.06,
+    terrain_threshold: float = 0.025,
+    gap_threshold: float = 0.10,
+    command_threshold: float = 0.10,
+    std: float = 0.055,
+    max_desired_clearance: float = 0.32,
+    use_command_direction: bool = True,
+    use_terrain_type: bool = True,
+    gap_terrain_keywords: tuple[str, ...] = ("gap",),
+    stair_terrain_keywords: tuple[str, ...] = ("pyramid_stairs",),
+    slope_terrain_keywords: tuple[str, ...] = ("slope",),
+    geometry_fallback: bool = True,
+) -> torch.Tensor:
+    """Reward swing-foot clearance according to the terrain immediately ahead.
+
+    Terrain names identify broad terrain categories, while the current command direction
+    and local height change decide whether stairs are being traversed upward or downward.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    scanner = env.scene.sensors[height_scanner_cfg.name]
+    contact_sensor: ContactSensor = env.scene.sensors[contact_sensor_cfg.name]
+
+    ray_hits_w = scanner.data.ray_hits_w
+    ray_heights = ray_hits_w[..., 2]
+    valid_rays = torch.isfinite(ray_heights)
+    num_rays = ray_hits_w.shape[1]
+
+    root_pos_w = asset.data.root_pos_w
+    root_quat_w = asset.data.root_quat_w
+    ray_pos_b = quat_apply_inverse(
+        root_quat_w.unsqueeze(1).expand(-1, num_rays, -1),
+        ray_hits_w - root_pos_w.unsqueeze(1),
+    )
+
+    command = env.command_manager.get_command(command_name)
+    cmd_xy = command[:, :2]
+    cmd_speed = torch.norm(cmd_xy, dim=1)
+    cmd_speed_safe = cmd_speed.clamp_min(1.0e-6)
+    if use_command_direction:
+        dir_x = torch.where(cmd_speed > 1.0e-6, cmd_xy[:, 0] / cmd_speed_safe, torch.ones_like(cmd_speed))
+        dir_y = torch.where(cmd_speed > 1.0e-6, cmd_xy[:, 1] / cmd_speed_safe, torch.zeros_like(cmd_speed))
+    else:
+        dir_x = torch.ones_like(cmd_speed)
+        dir_y = torch.zeros_like(cmd_speed)
+
+    path_forward = ray_pos_b[..., 0] * dir_x.unsqueeze(1) + ray_pos_b[..., 1] * dir_y.unsqueeze(1)
+    path_lateral = (-ray_pos_b[..., 0] * dir_y.unsqueeze(1) + ray_pos_b[..., 1] * dir_x.unsqueeze(1)).abs()
+    in_lateral_band = path_lateral < lateral_window
+    ahead_mask = (
+        valid_rays & in_lateral_band & (path_forward >= forward_window[0]) & (path_forward <= forward_window[1])
+    )
+    support_mask = (
+        valid_rays & in_lateral_band & (path_forward >= support_window[0]) & (path_forward <= support_window[1])
+    )
+
+    low_fill = torch.full_like(ray_heights, -1.0e6)
+    high_fill = torch.full_like(ray_heights, 1.0e6)
+    support_height = torch.max(torch.where(support_mask, ray_heights, low_fill), dim=1).values
+    support_missing = support_height < -1.0e5
+    support_height = torch.where(support_missing, env.scene.env_origins[:, 2], support_height)
+
+    ahead_max = torch.max(torch.where(ahead_mask, ray_heights, low_fill), dim=1).values
+    ahead_min = torch.min(torch.where(ahead_mask, ray_heights, high_fill), dim=1).values
+    ahead_missing = ahead_max < -1.0e5
+    ahead_max = torch.where(ahead_missing, support_height, ahead_max)
+    ahead_min = torch.where(ahead_min > 1.0e5, support_height, ahead_min)
+
+    terrain_rise = torch.clamp(ahead_max - support_height, min=0.0)
+    raw_terrain_drop = torch.clamp(support_height - ahead_min, min=0.0)
+    terrain_drop = torch.clamp(raw_terrain_drop - gap_threshold, min=0.0)
+    terrain_roughness = torch.clamp(ahead_max - ahead_min, min=0.0)
+
+    stair_extra = torch.clamp(terrain_rise + stair_clearance_margin, min=0.0, max=max_desired_clearance)
+    gap_extra = torch.where(
+        terrain_drop > 0.0,
+        gap_clearance + gap_depth_scale * terrain_drop,
+        torch.zeros_like(terrain_drop),
+    )
+    slope_extra = torch.clamp(terrain_roughness, min=0.0, max=slope_clearance)
+    geometry_extra = torch.maximum(torch.maximum(stair_extra, gap_extra), slope_extra)
+    geometry_active = (
+        (terrain_rise > terrain_threshold) | (terrain_drop > 0.0) | (terrain_roughness > terrain_threshold)
+    )
+
+    terrain_type_known = torch.zeros_like(terrain_rise, dtype=torch.bool)
+    desired_extra = geometry_extra
+    terrain_active = geometry_active
+    if use_terrain_type:
+        gap_mask = torch.zeros_like(terrain_type_known)
+        stair_mask = torch.zeros_like(terrain_type_known)
+        slope_mask = torch.zeros_like(terrain_type_known)
+
+        terrain = env.scene.terrain
+        if terrain.cfg.terrain_type == "generator":
+            terrain_gen = getattr(terrain, "terrain_generator", None)
+            if terrain_gen is not None and hasattr(terrain_gen, "get_subterrain_indices"):
+                sub_names = list(terrain.cfg.terrain_generator.sub_terrains.keys())
+                sub_idx_per_env = terrain_gen.get_subterrain_indices(
+                    terrain.terrain_levels, terrain.terrain_types, device=env.device
+                )
+                for sub_idx, name in enumerate(sub_names):
+                    name_l = name.lower()
+                    is_gap = any(keyword.lower() in name_l for keyword in gap_terrain_keywords)
+                    is_stair = any(keyword.lower() in name_l for keyword in stair_terrain_keywords)
+                    is_slope = any(keyword.lower() in name_l for keyword in slope_terrain_keywords)
+                    sub_mask = sub_idx_per_env == sub_idx
+                    if is_gap:
+                        gap_mask |= sub_mask
+                    elif is_stair:
+                        stair_mask |= sub_mask
+                    elif is_slope:
+                        slope_mask |= sub_mask
+
+        terrain_type_known = gap_mask | stair_mask | slope_mask
+        stair_typed_extra = torch.where(
+            terrain_rise > terrain_threshold,
+            stair_extra,
+            torch.where(
+                raw_terrain_drop > terrain_threshold,
+                torch.full_like(terrain_rise, down_stair_clearance),
+                slope_extra,
+            ),
+        )
+        typed_extra = torch.maximum(
+            torch.maximum(
+                torch.where(stair_mask, stair_typed_extra, torch.zeros_like(stair_typed_extra)),
+                torch.where(gap_mask, gap_extra, torch.zeros_like(gap_extra)),
+            ),
+            torch.maximum(
+                torch.zeros_like(terrain_rise),
+                torch.where(slope_mask, slope_extra, torch.zeros_like(slope_extra)),
+            ),
+        )
+        fallback_extra = geometry_extra if geometry_fallback else torch.zeros_like(geometry_extra)
+        fallback_active = geometry_active if geometry_fallback else torch.zeros_like(geometry_active)
+        desired_extra = torch.where(terrain_type_known, typed_extra, fallback_extra)
+        terrain_active = torch.where(terrain_type_known, terrain_type_known, fallback_active)
+
+    desired_clearance = base_clearance + desired_extra
+    desired_clearance = desired_clearance.clamp(max=max_desired_clearance)
+    command_active = cmd_speed > command_threshold
+
+    contact_forces = contact_sensor.data.net_forces_w_history[:, :, contact_sensor_cfg.body_ids, :]
+    in_contact = torch.norm(contact_forces, dim=-1).max(dim=1).values > 1.0
+    swing_mask = ~in_contact
+
+    foot_height = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+    foot_clearance = foot_height - support_height.unsqueeze(1)
+    foot_reward = torch.exp(-torch.square((foot_clearance - desired_clearance.unsqueeze(1)) / std))
+    foot_reward = foot_reward * swing_mask.float()
+    swing_count = swing_mask.float().sum(dim=1).clamp(min=1.0)
+
+    return foot_reward.sum(dim=1) / swing_count * terrain_active.float() * command_active.float()
+
+
 def link_orientation(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize non-flat link orientation using L2 squared kernel."""
     # extract the used quantities (to enable type-hinting)

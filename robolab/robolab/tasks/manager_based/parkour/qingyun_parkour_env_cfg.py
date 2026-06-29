@@ -72,8 +72,8 @@ QINGYUN_ANG_VEL_THRESHOLD = 0.0
 # Set a weight to 0.0 to keep the term active but make it contribute no reward.
 QINGYUN_REWARD_WEIGHTS = {
     # Task rewards
-    "track_lin_vel_xy_exp": 10.0,
-    "track_ang_vel_z_exp": 10.0,
+    "track_lin_vel_xy_exp": 5.0,
+    "track_ang_vel_z_exp": 5.0,
     "heading_error": -1.0,
     "dont_wait": -0.5,
     "is_alive": 3.0,
@@ -96,6 +96,7 @@ QINGYUN_REWARD_WEIGHTS = {
     "pelvis_orientation_l2": -3.0,
     "feet_flat_ori": -0.4,
     "feet_at_plane": -0.1,
+    "terrain_adaptive_foot_lift": 3.0,
     "sound_suppression": -5.0e-4,
     "energy": -5.0e-5,
     # Safety rewards
@@ -104,6 +105,35 @@ QINGYUN_REWARD_WEIGHTS = {
     "torque_limits": -0.01,
     "undesired_contacts": -1.0,
     "feet_stumble": -1.0,
+}
+
+# Tune how strongly the swing foot should clear the terrain in front of the robot.
+# Heights are in meters. The reward uses the torso height scanner to infer stairs, gaps, and slopes.
+QINGYUN_TERRAIN_ADAPTIVE_FOOT_LIFT_PARAMS = {
+    "height_scanner_cfg": SceneEntityCfg("height_scanner"),
+    "contact_sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot_pitch_link"),
+    "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot_pitch_link"),
+    "command_name": "base_velocity",
+    "forward_window": (0.15, 0.85),
+    "support_window": (-0.15, 0.15),
+    "lateral_window": 0.35,
+    "base_clearance": 0.045,
+    "stair_clearance_margin": 0.035,
+    "down_stair_clearance": 0.06,
+    "gap_clearance": 0.12,
+    "gap_depth_scale": 0.5,
+    "slope_clearance": 0.06,
+    "terrain_threshold": 0.025,
+    "gap_threshold": 0.10,
+    "command_threshold": 0.10,
+    "std": 0.055,
+    "max_desired_clearance": 0.32,
+    "use_command_direction": True,
+    "use_terrain_type": True,
+    "gap_terrain_keywords": ("gap",),
+    "stair_terrain_keywords": ("pyramid_stairs",),
+    "slope_terrain_keywords": ("slope",),
+    "geometry_fallback": True,
 }
 
 # Tune QingYun curriculum schedules for reward weights here.
@@ -308,6 +338,11 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
         )
         self.rewards.rewards.feet_stumble.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces", body_names=[foot_body_pattern, knee_body_pattern]
+        )
+        self.rewards.rewards.terrain_adaptive_foot_lift = RewTerm(
+            func=mdp.terrain_adaptive_foot_lift,
+            weight=QINGYUN_REWARD_WEIGHTS["terrain_adaptive_foot_lift"],
+            params=copy.deepcopy(QINGYUN_TERRAIN_ADAPTIVE_FOOT_LIFT_PARAMS),
         )
         self.rewards.rewards.rpo_thigh_yaw_joint_sign_penalty = None
         self.rewards.rewards.qingyun_hip_yaw_joint_sign_penalty = RewTerm(
