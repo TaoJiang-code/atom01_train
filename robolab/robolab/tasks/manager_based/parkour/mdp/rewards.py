@@ -271,6 +271,8 @@ def terrain_adaptive_foot_lift(
     command_name: str = "base_velocity",
     forward_window: tuple[float, float] = (0.15, 0.85),
     support_window: tuple[float, float] = (-0.25, 0.15),
+    support_height_source: str = "scanner",
+    support_height_offset: float = 0.0,
     lateral_window: float = 0.35,
     base_clearance: float = 0.045,
     stair_clearance_margin: float = 0.035,
@@ -294,10 +296,13 @@ def terrain_adaptive_foot_lift(
 
     Terrain names identify broad terrain categories, while the current command direction
     and local height change decide whether stairs are being traversed upward or downward.
+    The forward terrain height always comes from the height scanner; the support height
+    can come from either the scanner window or the lower foot link.
     """
     asset: Articulation = env.scene[asset_cfg.name]
     scanner = env.scene.sensors[height_scanner_cfg.name]
     contact_sensor: ContactSensor = env.scene.sensors[contact_sensor_cfg.name]
+    foot_height = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
 
     ray_hits_w = scanner.data.ray_hits_w
     ray_heights = ray_hits_w[..., 2]
@@ -337,6 +342,12 @@ def terrain_adaptive_foot_lift(
     support_height = torch.max(torch.where(support_mask, ray_heights, low_fill), dim=1).values
     support_missing = support_height < -1.0e5
     support_height = torch.where(support_missing, env.scene.env_origins[:, 2], support_height)
+    if support_height_source == "min_foot":
+        support_height = torch.min(foot_height, dim=1).values + support_height_offset
+    elif support_height_source != "scanner":
+        raise ValueError(
+            f"Unsupported support_height_source: {support_height_source}. Expected 'scanner' or 'min_foot'."
+        )
 
     ahead_max = torch.max(torch.where(ahead_mask, ray_heights, low_fill), dim=1).values
     ahead_min = torch.min(torch.where(ahead_mask, ray_heights, high_fill), dim=1).values
@@ -423,7 +434,6 @@ def terrain_adaptive_foot_lift(
     in_contact = torch.norm(contact_forces, dim=-1).max(dim=1).values > 1.0
     swing_mask = ~in_contact
 
-    foot_height = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
     foot_clearance = foot_height - support_height.unsqueeze(1)
     foot_reward = torch.exp(-torch.square((foot_clearance - desired_clearance.unsqueeze(1)) / std))
     foot_reward = foot_reward * swing_mask.float()
