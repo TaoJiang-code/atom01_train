@@ -53,6 +53,52 @@ def tracking_exp_vel(
     return torch.mean(terrain.terrain_levels.float())
 
 
+def target_reaching_terrain_levels(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    command_name: str = "base_velocity",
+    target_distance_threshold: float = 0.6,
+    root_height_offset: float = 0.35,
+    lin_vel_threshold: tuple = (0.7, 0.9),
+) -> torch.Tensor:
+    """Terrain curriculum based on reaching the sampled target patch.
+
+    The terrain level increases when the robot reaches the command generator's sampled target
+    patch and tracks the commanded linear velocity well. It decreases when the target is not
+    reached or the linear velocity tracking score is too low.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    terrain: TerrainImporter = env.scene.terrain
+    command = env.command_manager.get_term(command_name)
+
+    if not isinstance(env_ids, torch.Tensor):
+        env_ids = torch.tensor(list(env_ids), dtype=torch.long, device=env.device)
+    else:
+        env_ids = env_ids.to(device=env.device)
+
+    tracking_exp_vel_xy = command.metrics["tracking_exp_vel_xy"][env_ids]
+    root_pos_w = asset.data.root_pos_w[env_ids]
+
+    if hasattr(command, "pos_command_w"):
+        reference_pos_w = root_pos_w[:, :3].clone()
+        reference_pos_w[:, 2] -= root_height_offset
+        target_distance = torch.norm(command.pos_command_w[env_ids, :3] - reference_pos_w, dim=1)
+        reached_target = target_distance < target_distance_threshold
+    else:
+        reached_target = torch.zeros_like(tracking_exp_vel_xy, dtype=torch.bool)
+
+    tracking_good = tracking_exp_vel_xy > lin_vel_threshold[1]
+    tracking_bad = tracking_exp_vel_xy < lin_vel_threshold[0]
+
+    move_up = reached_target & tracking_good
+    move_down = (~reached_target) | tracking_bad
+    move_down &= ~move_up
+
+    terrain.update_env_origins(env_ids, move_up, move_down)
+    return torch.mean(terrain.terrain_levels.float())
+
+
 
 def modify_rewards_weight(
     env: ManagerBasedRLEnv,
@@ -121,4 +167,3 @@ def modify_rewards_weight(
     # Log the global mean so the curve reflects the full population, not only the reset batch.
     global_weights = env.reward_manager.get_per_env_term_weights(term_name)
     return global_weights.mean()
-

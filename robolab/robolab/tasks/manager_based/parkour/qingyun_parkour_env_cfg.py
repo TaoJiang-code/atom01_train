@@ -77,13 +77,13 @@ QINGYUN_REWARD_WEIGHTS = {
     "heading_error": -1.0,
     "dont_wait": -0.5,
     "is_alive": 3.0,
-    "lin_vel_z_l2": -5.0,
+    # "lin_vel_z_l2": -5.0,
     "stand_still": -1.0,
     # Robot-specific regularization
     "qingyun_hip_yaw_joint_sign_penalty": -10.0,
     "volume_points_penetration_feet": -1.0,
     "volume_points_penetration_knee": -1.0,
-    "feet_slide": -1.0,
+    # "feet_slide": -1.0,
     "joint_deviation_upper_body": -0.01,
     "freeze_upper_torso": -0.8,
     "ang_vel_xy_l2": -0.1,
@@ -100,11 +100,29 @@ QINGYUN_REWARD_WEIGHTS = {
     "sound_suppression": -5.0e-4,
     "energy": -5.0e-5,
     # Safety rewards
-    "dof_pos_limits": -1.0,
+    # "dof_pos_limits": -1.0,
     "dof_vel_limits": -1.0,
-    "torque_limits": -0.01,
+    # "torque_limits": -0.01,
     "undesired_contacts": -1.0,
-    "feet_stumble": -1.0,
+    # "feet_stumble": -1.0,
+
+
+    "lin_vel_z_l2": -2.0,   #
+    "dof_pos_limits": -0.5,#
+    "feet_slide": -0.5,    #
+    "feet_stumble": -0.5,  #
+    "torque_limits": -0.005,#
+    # "action_rate_l2": -0.005,
+    # "ang_vel_xy_l2": -0.05,
+    # "dof_acc_l2": -2.0e-7,
+    
+    # "dof_torques_l2": -0.5e-5,
+    # "dof_vel_l2": -0.5e-4,
+    # "dof_vel_limits": -0.5,
+    # "energy": -4.0e-5,
+
+    # "sound_suppression": -4.0e-4,
+
 }
 
 # Tune how strongly the swing foot should clear the terrain in front of the robot.
@@ -138,13 +156,22 @@ QINGYUN_TERRAIN_ADAPTIVE_FOOT_LIFT_PARAMS = {
     "geometry_fallback": True,
 }
 
+# Tune QingYun terrain-level curriculum here.
+# This replaces the inherited pure velocity-tracking terrain curriculum with target-reaching logic.
+QINGYUN_TERRAIN_LEVEL_CURRICULUM_PARAMS = {
+    "command_name": "base_velocity",
+    "target_distance_threshold": 0.3,
+    "root_height_offset": 0.35,
+    "lin_vel_threshold": (0.7, 0.9),
+}
+
 # Tune QingYun curriculum schedules for reward weights here.
 # These values override the inherited curriculum terms from parkour_env_cfg.py.
 QINGYUN_VOLUME_POINTS_PENETRATION_WEIGHT_CURRICULUM = {
     "feet": {
         "term_name": "volume_points_penetration_feet",
         "init_weight": -1.0,
-        "final_weight": -5.0,
+        "final_weight": -100.0,
         "lin_vel_threshold": (0.7, 0.9),
         "ang_vel_threshold": (0.0, 0.0),
         "step_size": 0.03,
@@ -152,7 +179,7 @@ QINGYUN_VOLUME_POINTS_PENETRATION_WEIGHT_CURRICULUM = {
     "knee": {
         "term_name": "volume_points_penetration_knee",
         "init_weight": -1.0,
-        "final_weight": -5.0,
+        "final_weight": -100.0,
         "lin_vel_threshold": (0.7, 0.9),
         "ang_vel_threshold": (0.0, 0.0),
         "step_size": 0.03,
@@ -160,7 +187,7 @@ QINGYUN_VOLUME_POINTS_PENETRATION_WEIGHT_CURRICULUM = {
     "feet_stumble": {
         "term_name": "feet_stumble",
         "init_weight": -1.0,
-        "final_weight": -5.0,
+        "final_weight": -10.0,
         "lin_vel_threshold": (0.7, 0.9),
         "ang_vel_threshold": (0.0, 0.0),
         "step_size": 0.03,
@@ -295,6 +322,8 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
                 term.weight = weight
 
     def _apply_qingyun_curriculum_weights(self):
+        self.curriculum.terrain_levels.func = mdp.target_reaching_terrain_levels
+        self.curriculum.terrain_levels.params = copy.deepcopy(QINGYUN_TERRAIN_LEVEL_CURRICULUM_PARAMS)
         self.curriculum.volume_points_penetration_weight_feet.params = copy.deepcopy(
             QINGYUN_VOLUME_POINTS_PENETRATION_WEIGHT_CURRICULUM["feet"]
         )
@@ -341,11 +370,11 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
         self.rewards.rewards.feet_stumble.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces", body_names=[foot_body_pattern, knee_body_pattern]
         )
-        self.rewards.rewards.terrain_adaptive_foot_lift = RewTerm(
-            func=mdp.terrain_adaptive_foot_lift,
-            weight=QINGYUN_REWARD_WEIGHTS["terrain_adaptive_foot_lift"],
-            params=copy.deepcopy(QINGYUN_TERRAIN_ADAPTIVE_FOOT_LIFT_PARAMS),
-        )
+        # self.rewards.rewards.terrain_adaptive_foot_lift = RewTerm(
+        #     func=mdp.terrain_adaptive_foot_lift,
+        #     weight=QINGYUN_REWARD_WEIGHTS["terrain_adaptive_foot_lift"],
+        #     params=copy.deepcopy(QINGYUN_TERRAIN_ADAPTIVE_FOOT_LIFT_PARAMS),
+        # )
         self.rewards.rewards.rpo_thigh_yaw_joint_sign_penalty = None
         self.rewards.rewards.qingyun_hip_yaw_joint_sign_penalty = RewTerm(
             func=mdp.qingyun_hip_yaw_joint_sign_penalty,
