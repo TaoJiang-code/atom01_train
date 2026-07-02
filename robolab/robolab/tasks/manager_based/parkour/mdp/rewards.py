@@ -274,11 +274,13 @@ def terrain_adaptive_foot_lift(
     support_height_source: str = "scanner",
     support_height_offset: float = 0.0,
     lateral_window: float = 0.35,
-    base_clearance: float = 0.045,
     stair_clearance_margin: float = 0.035,
     down_stair_clearance: float = 0.06,
     gap_clearance: float = 0.12,
     gap_depth_scale: float = 0.5,
+    gap_stride_margin: float = 0.08,
+    gap_stride_std: float = 0.12,
+    gap_stride_weight: float = 0.5,
     slope_clearance: float = 0.06,
     terrain_threshold: float = 0.025,
     gap_threshold: float = 0.10,
@@ -287,6 +289,8 @@ def terrain_adaptive_foot_lift(
     max_desired_clearance: float = 0.32,
     use_command_direction: bool = True,
     use_terrain_type: bool = True,
+    require_scanner_change: bool = True,
+    stair_single_swing_bonus: float = 0.25,
     gap_terrain_keywords: tuple[str, ...] = ("gap",),
     stair_terrain_keywords: tuple[str, ...] = ("pyramid_stairs",),
     slope_terrain_keywords: tuple[str, ...] = ("slope",),
@@ -379,6 +383,9 @@ def terrain_adaptive_foot_lift(
         gap_mask = torch.zeros_like(terrain_type_known)
         stair_mask = torch.zeros_like(terrain_type_known)
         slope_mask = torch.zeros_like(terrain_type_known)
+        stair_height = torch.zeros_like(terrain_type_known, dtype=terrain_rise.dtype)
+        gap_distance = torch.zeros_like(terrain_type_known, dtype=terrain_rise.dtype)
+        slope_height = torch.zeros_like(terrain_type_known, dtype=terrain_rise.dtype)
 
         terrain = env.scene.terrain
         if terrain.cfg.terrain_type == "generator":
@@ -388,6 +395,7 @@ def terrain_adaptive_foot_lift(
                 sub_idx_per_env = terrain_gen.get_subterrain_indices(
                     terrain.terrain_levels, terrain.terrain_types, device=env.device
                 )
+                sub_cfgs = terrain_gen.get_subterrain_cfg(terrain.terrain_levels, terrain.terrain_types)
                 for sub_idx, name in enumerate(sub_names):
                     name_l = name.lower()
                     is_gap = any(keyword.lower() in name_l for keyword in gap_terrain_keywords)
@@ -401,10 +409,35 @@ def terrain_adaptive_foot_lift(
                     elif is_slope:
                         slope_mask |= sub_mask
 
+                if isinstance(sub_cfgs, list):
+                    for env_id, sub_cfg in enumerate(sub_cfgs):
+                        if sub_cfg is None:
+                            continue
+                        difficulty = float(getattr(sub_cfg, "difficulty", 0.0))
+                        if hasattr(sub_cfg, "step_height_range"):
+                            low, high = sub_cfg.step_height_range
+                            stair_height[env_id] = abs(float(low) + difficulty * (float(high) - float(low)))
+                        if hasattr(sub_cfg, "gap_distance_range"):
+                            low, high = sub_cfg.gap_distance_range
+                            gap_distance[env_id] = float(low) + difficulty * (float(high) - float(low))
+                        if hasattr(sub_cfg, "slope_range"):
+                            low, high = sub_cfg.slope_range
+                            slope = abs(float(low) + difficulty * (float(high) - float(low)))
+                            slope_height[env_id] = slope * float(getattr(sub_cfg, "size", (0.0, 0.0))[0]) * 0.5
+
+        stair_active = (terrain_rise > terrain_threshold) | (raw_terrain_drop > terrain_threshold)
+        gap_active = terrain_drop > 0.0
+        slope_active = terrain_roughness > terrain_threshold
         terrain_type_known = gap_mask | stair_mask | slope_mask
+        stair_cfg_extra = torch.clamp(stair_height + stair_clearance_margin, min=0.0)
+        gap_cfg_extra = torch.clamp(gap_clearance + gap_depth_scale * gap_distance, min=0.0)
+        slope_cfg_extra = torch.clamp(
+            slope_clearance + 0.1 * torch.clamp(slope_height, max=slope_clearance),
+            min=0.0,
+        )
         stair_typed_extra = torch.where(
             terrain_rise > terrain_threshold,
-            stair_extra,
+            stair_cfg_extra,
             torch.where(
                 raw_terrain_drop > terrain_threshold,
                 torch.full_like(terrain_rise, down_stair_clearance),
@@ -414,19 +447,23 @@ def terrain_adaptive_foot_lift(
         typed_extra = torch.maximum(
             torch.maximum(
                 torch.where(stair_mask, stair_typed_extra, torch.zeros_like(stair_typed_extra)),
-                torch.where(gap_mask, gap_extra, torch.zeros_like(gap_extra)),
+                torch.where(gap_mask, gap_cfg_extra, torch.zeros_like(gap_cfg_extra)),
             ),
             torch.maximum(
                 torch.zeros_like(terrain_rise),
-                torch.where(slope_mask, slope_extra, torch.zeros_like(slope_extra)),
+                torch.where(slope_mask, slope_cfg_extra, torch.zeros_like(slope_cfg_extra)),
             ),
         )
         fallback_extra = geometry_extra if geometry_fallback else torch.zeros_like(geometry_extra)
         fallback_active = geometry_active if geometry_fallback else torch.zeros_like(geometry_active)
         desired_extra = torch.where(terrain_type_known, typed_extra, fallback_extra)
-        terrain_active = torch.where(terrain_type_known, terrain_type_known, fallback_active)
+        typed_active = (stair_mask & stair_active) | (gap_mask & gap_active) | (slope_mask & slope_active)
+        terrain_active = torch.where(terrain_type_known, typed_active, fallback_active)
 
-    desired_clearance = base_clearance + desired_extra
+    if require_scanner_change:
+        terrain_active &= geometry_active
+
+    desired_clearance = desired_extra
     desired_clearance = desired_clearance.clamp(max=max_desired_clearance)
     command_active = cmd_speed > command_threshold
 
@@ -438,8 +475,21 @@ def terrain_adaptive_foot_lift(
     foot_reward = torch.exp(-torch.square((foot_clearance - desired_clearance.unsqueeze(1)) / std))
     foot_reward = foot_reward * swing_mask.float()
     swing_count = swing_mask.float().sum(dim=1).clamp(min=1.0)
+    reward = foot_reward.sum(dim=1) / swing_count
 
-    return foot_reward.sum(dim=1) / swing_count * terrain_active.float() * command_active.float()
+    if use_terrain_type and stair_single_swing_bonus > 0.0:
+        single_swing = swing_mask.float().sum(dim=1) == 1.0
+        reward = reward * (1.0 + stair_single_swing_bonus * (stair_mask & single_swing).float())
+
+    if use_terrain_type and gap_stride_weight > 0.0 and foot_height.shape[1] >= 2:
+        foot_pos_w = asset.data.body_pos_w[:, asset_cfg.body_ids[:2], :]
+        foot_delta_w = foot_pos_w[:, 0, :2] - foot_pos_w[:, 1, :2]
+        stride_along_command = torch.abs(foot_delta_w[:, 0] * dir_x + foot_delta_w[:, 1] * dir_y)
+        desired_gap_stride = gap_distance + gap_stride_margin
+        gap_stride_reward = torch.exp(-torch.square((stride_along_command - desired_gap_stride) / gap_stride_std))
+        reward = reward + gap_stride_weight * gap_stride_reward * gap_mask.float()
+
+    return reward * terrain_active.float() * command_active.float()
 
 
 def link_orientation(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:

@@ -68,6 +68,91 @@ QINGYUN_ONLY_POSITIVE_LIN_VEL_X = True
 QINGYUN_LIN_VEL_THRESHOLD = 0.0
 QINGYUN_ANG_VEL_THRESHOLD = 0.0
 
+# Tune QingYun terrain generation here.
+# These overrides are applied to a private copy of ROUGH_TERRAINS_CFG, so the shared default terrain config is unchanged.
+QINGYUN_TERRAIN_GENERATOR_PARAMS = {
+    "num_rows": 10,
+    "num_cols": 20,
+    "size": (8.0, 8.0),
+    "border_width": 3,
+    "horizontal_scale": 0.05,
+    "vertical_scale": 0.005,
+    "slope_threshold": 1.0,
+    "curriculum": True,
+}
+QINGYUN_SUB_TERRAIN_PARAMS = {
+    "perlin_rough": {
+        "proportion": 0.05,
+        "noise_scale": [0.0, 0.1],
+    },
+    "perlin_rough_walk": {
+        "proportion": 0.05,
+        "noise_scale": [0.0, 0.1],
+    },
+    "perlin_rough_trun": {
+        "proportion": 0.05,
+        "noise_scale": [0.0, 0.1],
+    },
+    "perlin_rough_stand": {
+        "proportion": 0.05,
+        "noise_scale": [0.0, 0.1],
+    },
+    "square_gaps": {
+        "proportion": 0.1,
+        "gap_distance_range": (0.1, 0.40),
+        "gap_depth": (0.4, 0.6),
+        "platform_width": 2.5,
+    },
+    "pyramid_stairs_32": {
+        "proportion": 0.1,
+        "step_height_range": (0.01, 0.20),
+        "step_width": 0.32,
+        "platform_width": 2.0,
+        "perlin_cfg.noise_scale": 0.05,
+    },
+    "pyramid_stairs_30": {
+        "proportion": 0.1,
+        "step_height_range": (0.01, 0.20),
+        "step_width": 0.30,
+        "platform_width": 2.0,
+        "perlin_cfg.noise_scale": 0.05,
+    },
+    "pyramid_stairs_28": {
+        "proportion": 0.1,
+        "step_height_range": (0.01, 0.20),
+        "step_width": 0.28,
+        "platform_width": 2.0,
+        "perlin_cfg.noise_scale": 0.05,
+    },
+    "pyramid_stairs_inv_32": {
+        "proportion": 0.1,
+        "step_height_range": (0.01, 0.20),
+        "step_width": 0.32,
+        "platform_width": 2.0,
+        "perlin_cfg.noise_scale": 0.05,
+    },
+    "pyramid_stairs_inv_30": {
+        "proportion": 0.1,
+        "step_height_range": (0.01, 0.20),
+        "step_width": 0.30,
+        "platform_width": 2.0,
+        "perlin_cfg.noise_scale": 0.05,
+    },
+    "pyramid_stairs_inv_28": {
+        "proportion": 0.1,
+        "step_height_range": (0.01, 0.20),
+        "step_width": 0.28,
+        "platform_width": 2.0,
+        "perlin_cfg.noise_scale": 0.05,
+    },
+    "hf_pyramid_slope_inv": {
+        "proportion": 0.1,
+        "slope_range": (0.0, 0.2),
+        "platform_width": 2.0,
+        "perlin_cfg.noise_scale": 0.0,
+    },
+}
+
 # Tune QingYun reward weights here.
 # Set a weight to 0.0 to keep the term active but make it contribute no reward.
 QINGYUN_REWARD_WEIGHTS = {
@@ -96,7 +181,9 @@ QINGYUN_REWARD_WEIGHTS = {
     "pelvis_orientation_l2": -3.0,
     "feet_flat_ori": -0.4,
     "feet_at_plane": -0.1,
+
     "terrain_adaptive_foot_lift": 3.0,
+    
     "sound_suppression": -5.0e-4,
     "energy": -5.0e-5,
     # Safety rewards
@@ -132,16 +219,18 @@ QINGYUN_TERRAIN_ADAPTIVE_FOOT_LIFT_PARAMS = {
     "contact_sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot_pitch_link"),
     "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot_pitch_link"),
     "command_name": "base_velocity",
-    "forward_window": (0.15, 0.85),
+    "forward_window": (0.15, 0.25),
     "support_window": (-0.15, 0.15),
     "support_height_source": "min_foot",
-    "support_height_offset": -0.035,
+    "support_height_offset": -0.003,
     "lateral_window": 0.35,
-    "base_clearance": 0.045,
-    "stair_clearance_margin": 0.025,
+    "stair_clearance_margin": 0.03,
     "down_stair_clearance": 0.015,
-    "gap_clearance": 0.12,
+    "gap_clearance": 0.05,
     "gap_depth_scale": 0.3,
+    "gap_stride_margin": 0.08,
+    "gap_stride_std": 0.12,
+    "gap_stride_weight": 0.5,
     "slope_clearance": 0.025,
     "terrain_threshold": 0.025,
     "gap_threshold": 0.10,
@@ -150,6 +239,8 @@ QINGYUN_TERRAIN_ADAPTIVE_FOOT_LIFT_PARAMS = {
     "max_desired_clearance": 0.25,
     "use_command_direction": True,
     "use_terrain_type": True,
+    "require_scanner_change": True,
+    "stair_single_swing_bonus": 0.25,
     "gap_terrain_keywords": ("gap",),
     "stair_terrain_keywords": ("pyramid_stairs",),
     "slope_terrain_keywords": ("slope",),
@@ -157,11 +248,12 @@ QINGYUN_TERRAIN_ADAPTIVE_FOOT_LIFT_PARAMS = {
 }
 
 # Tune QingYun terrain-level curriculum here.
-# This replaces the inherited pure velocity-tracking terrain curriculum with target-reaching logic.
+# Terrain levels are updated with target-reaching and velocity-tracking logic.
 QINGYUN_TERRAIN_LEVEL_CURRICULUM_PARAMS = {
+    "asset_cfg": SceneEntityCfg("robot"),
     "command_name": "base_velocity",
-    "target_distance_threshold": 0.3,
-    "root_height_offset": 0.35,
+    "target_distance_threshold": 0.6,
+    "root_height_offset": QINGYUN_ROOT_HEIGHT_MIN,
     "lin_vel_threshold": (0.7, 0.9),
 }
 
@@ -228,9 +320,37 @@ QINGYUN_LINKS = [
     "rp_elbow_pitch_link",
 ]
 
-ROUGH_TERRAINS_CFG_PLAY = copy.deepcopy(ROUGH_TERRAINS_CFG)
-for sub_terrain_cfg in ROUGH_TERRAINS_CFG_PLAY.sub_terrains.values():
-    sub_terrain_cfg.wall_prob = [0.0, 0.0, 0.0, 0.0]
+
+def _set_cfg_attr(cfg, attr_path: str, value) -> None:
+    target = cfg
+    attrs = attr_path.split(".")
+    for attr in attrs[:-1]:
+        target = getattr(target, attr)
+    setattr(target, attrs[-1], value)
+
+
+def _make_qingyun_terrain_cfg(disable_walls: bool = False):
+    terrain_cfg = copy.deepcopy(ROUGH_TERRAINS_CFG)
+    for attr_name, value in QINGYUN_TERRAIN_GENERATOR_PARAMS.items():
+        setattr(terrain_cfg, attr_name, value)
+
+    for sub_terrain_name, params in QINGYUN_SUB_TERRAIN_PARAMS.items():
+        if sub_terrain_name not in terrain_cfg.sub_terrains:
+            raise KeyError(f"Unknown QingYun sub-terrain override: {sub_terrain_name}")
+        sub_terrain_cfg = terrain_cfg.sub_terrains[sub_terrain_name]
+        for attr_name, value in params.items():
+            _set_cfg_attr(sub_terrain_cfg, attr_name, value)
+
+    if disable_walls:
+        for sub_terrain_cfg in terrain_cfg.sub_terrains.values():
+            if hasattr(sub_terrain_cfg, "wall_prob"):
+                sub_terrain_cfg.wall_prob = [0.0, 0.0, 0.0, 0.0]
+
+    return terrain_cfg
+
+
+QINGYUN_ROUGH_TERRAINS_CFG = _make_qingyun_terrain_cfg()
+QINGYUN_ROUGH_TERRAINS_CFG_PLAY = _make_qingyun_terrain_cfg(disable_walls=True)
 
 
 @configclass
@@ -238,7 +358,7 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
+        self.scene.terrain.terrain_generator = QINGYUN_ROUGH_TERRAINS_CFG
         self.scene.robot = QINGYUN_Z1_A_REV_3_0_19_DOF_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.camera.mesh_prim_paths.extend(get_link_prim_targets(QINGYUN_LINKS))
 
@@ -370,11 +490,11 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
         self.rewards.rewards.feet_stumble.params["sensor_cfg"] = SceneEntityCfg(
             "contact_forces", body_names=[foot_body_pattern, knee_body_pattern]
         )
-        # self.rewards.rewards.terrain_adaptive_foot_lift = RewTerm(
-        #     func=mdp.terrain_adaptive_foot_lift,
-        #     weight=QINGYUN_REWARD_WEIGHTS["terrain_adaptive_foot_lift"],
-        #     params=copy.deepcopy(QINGYUN_TERRAIN_ADAPTIVE_FOOT_LIFT_PARAMS),
-        # )
+        self.rewards.rewards.terrain_adaptive_foot_lift = RewTerm(
+            func=mdp.terrain_adaptive_foot_lift,
+            weight=QINGYUN_REWARD_WEIGHTS["terrain_adaptive_foot_lift"],
+            params=copy.deepcopy(QINGYUN_TERRAIN_ADAPTIVE_FOOT_LIFT_PARAMS),
+        )
         self.rewards.rewards.rpo_thigh_yaw_joint_sign_penalty = None
         self.rewards.rewards.qingyun_hip_yaw_joint_sign_penalty = RewTerm(
             func=mdp.qingyun_hip_yaw_joint_sign_penalty,
@@ -398,7 +518,7 @@ class QingYunRev30ParkourRoughEnvCfg(ParkourEnvCfg):
 class QingYunRev30ParkourRoughEnvCfg_PLAY(QingYunRev30ParkourRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
-        self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG_PLAY
+        self.scene.terrain.terrain_generator = QINGYUN_ROUGH_TERRAINS_CFG_PLAY
         self.scene.num_envs = 10
         self.scene.env_spacing = 2.5
         self.episode_length_s = 10
