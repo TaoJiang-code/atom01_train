@@ -252,7 +252,7 @@ QINGYUN_TERRAIN_ADAPTIVE_FOOT_LIFT_PARAMS = {
 QINGYUN_TERRAIN_LEVEL_CURRICULUM_PARAMS = {
     "asset_cfg": SceneEntityCfg("robot"),
     "command_name": "base_velocity",
-    "target_distance_threshold": 0.6,
+    "target_distance_threshold": 0.3,
     "root_height_offset": QINGYUN_ROOT_HEIGHT_MIN,
     "lin_vel_threshold": (0.7, 0.9),
 }
